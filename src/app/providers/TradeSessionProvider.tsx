@@ -9,15 +9,26 @@ import React, {
 } from "react";
 
 export type TradeSessionData = {
-  summary: any | null;
-  bySymbol: any[];
-  byMonth: any[];
-  byDay: any[];
-  trades: any[];
-  errors: string[];
-  rowsParsed: number;
-  uploadedFileName?: string;
-};
+    summary: any | null;
+  
+    bySymbol: any[];
+    byMonth: any[];
+    byDay: any[];
+  
+    bySymbolPositions: any[];
+    byMonthPositions: any[];
+    byDayPositions: any[];
+  
+    trades: any[];
+    positions: any[];
+  
+    errors: string[];
+    rowsParsed: number;
+    uploadedFileName?: string;
+  };
+  
+  
+  
 
 type TradeSessionContextValue = {
   data: TradeSessionData | null;

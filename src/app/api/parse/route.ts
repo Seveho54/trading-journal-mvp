@@ -4,6 +4,11 @@ import { buildOverview } from "../../../core/analytics/overview";
 import { buildBySymbol } from "../../../core/analytics/bySymbol";
 import { buildByMonth } from "../../../core/analytics/byMonth";
 import { buildByDay } from "../../../core/analytics/byDay";
+import { buildPositions } from "@/core/positions/buildPositions";
+import { bySymbolPositions } from "@/core/analytics/bySymbolPositions";
+import { byMonthPositions } from "@/core/analytics/byMonthPositions";
+import { byDayPositions } from "@/core/analytics/byDayPositions";
+
 
 export const runtime = "nodejs";
 
@@ -26,7 +31,12 @@ export async function POST(req: Request) {
     const text = await file.text();
 
     const { trades, errors } = parseBitgetFuturesCSV(text);
-    const summary = buildOverview(trades);
+    const { positions, openLotsLeft, errors: posErrors } = buildPositions(trades);
+
+    const bySymbolPos = bySymbolPositions(positions);
+    const byMonthPos = byMonthPositions(positions);
+    const byDayPos = byDayPositions(positions);
+        const summary = buildOverview(trades);
     const bySymbol = buildBySymbol(trades);
     const byMonth = buildByMonth(trades);
     const byDay = buildByDay(trades);
@@ -34,14 +44,27 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
         ok: true,
+      
         summary,
         bySymbol,
         byMonth,
         byDay,
+      
         rowsParsed: trades.length,
-        trades, // erstmal komplett, später limitieren wir sauber
-        errors,
+      
+        trades,                 // aktuell komplett
+        positions,              // ✅ NEU: die gematchten Positionen
+        positionsCount: positions.length,        // optional, hilfreich
+        openPositionsCount: openLotsLeft.length, // optional, hilfreich
+
+          // ✅ Positions-Analytics:
+  bySymbolPositions: bySymbolPos,
+  byMonthPositions: byMonthPos,
+  byDayPositions: byDayPos,
+      
+        errors: [...(errors ?? []), ...(posErrors ?? [])], // ✅ zusammenführen
       });
+      
       
       
       

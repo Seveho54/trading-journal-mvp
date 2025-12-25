@@ -71,7 +71,7 @@ export default function CalendarPage() {
     );
   }
 
-  const byDay = (data as any).byDay ?? [];
+  const byDay = (data as any).byDayPositions ?? [];
   const [monthOffset, setMonthOffset] = useState(0);
 
   const map = new Map<string, any>();
@@ -217,7 +217,7 @@ for (let i = 0; i < 42; i++) days.push(addDaysUTC(gridStart, i));
     {fmt2(stats.totalNetProfit)}
   </span>
 </div>
-              <div>Trades: {stats.trades}</div>
+<div>Positions: {stats.positions}</div>
             </>
           ) : (
             <div style={{ opacity: 0.6 }}>—</div>

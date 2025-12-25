@@ -105,6 +105,12 @@ export default function PerformancePage() {
         </div>
       </div>
 
+
+      <div>Trades: <b>{data.trades?.length ?? 0}</b></div>
+<div>Positions: <b>{data.positions?.length ?? 0}</b></div>
+
+
+
       {/* Equity Curve */}
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>Equity Curve (monthly)</div>
