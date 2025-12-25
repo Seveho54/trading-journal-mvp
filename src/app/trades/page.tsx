@@ -3,7 +3,7 @@ import TradesClient from "./TradesClient";
 
 export default function TradesPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 20 }}>Loading trades…</div>}>
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
       <TradesClient />
     </Suspense>
   );
