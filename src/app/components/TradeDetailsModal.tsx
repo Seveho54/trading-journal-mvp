@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 
@@ -10,7 +10,7 @@ type Props = {
   onClose: () => void;
   children: React.ReactNode;
 
-  // ✅ NEW: we pass the currently selected trade into the modal
+  // ✅ pass selected trade into modal
   trade?: any;
 };
 
@@ -19,6 +19,25 @@ export function TradeDetailsModal({ open, title = "Trade Details", onClose, chil
 
   const router = useRouter();
   const { isPro } = useTradeSession();
+
+  // ✅ ESC to close + body scroll lock (MVP polish)
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -60,12 +79,17 @@ export function TradeDetailsModal({ open, title = "Trade Details", onClose, chil
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900 }}>{title}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Click outside to close</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Click outside or press ESC to close</div>
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {isPro ? (
-              <button className="btn-secondary" onClick={copyRaw} disabled={!trade} title={!trade ? "No trade selected" : ""}>
+              <button
+                className="btn-secondary"
+                onClick={copyRaw}
+                disabled={!trade}
+                title={!trade ? "No trade selected" : ""}
+              >
                 {copied ? "✅ Copied" : "Copy Raw JSON"}
               </button>
             ) : (

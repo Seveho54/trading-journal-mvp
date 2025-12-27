@@ -13,22 +13,11 @@ type SortKey = "closeDesc" | "closeAsc" | "pnlDesc" | "pnlAsc";
 function fmt2(n: number) {
   return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
-
 function fmtPercent(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
 }
-
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
-}
-
-function fmtHoldMinutes(mins: number) {
-  if (!Number.isFinite(mins) || mins <= 0) return "–";
-  if (mins < 60) return `${Math.round(mins)}m`;
-  const h = mins / 60;
-  if (h < 24) return `${h.toFixed(1)}h`;
-  const d = h / 24;
-  return `${d.toFixed(1)}d`;
 }
 
 function csvEscape(v: any) {
@@ -36,14 +25,12 @@ function csvEscape(v: any) {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
-
 function toCSV(rows: Record<string, any>[]) {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);
   const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(","))];
   return lines.join("\n");
 }
-
 function downloadTextFile(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -59,11 +46,40 @@ function downloadTextFile(filename: string, content: string) {
 function toDayKey(ts: any): string {
   return String(ts ?? "").slice(0, 10);
 }
-
 function timeOf(p: any): number {
   const t = p.closedAt ?? p.openedAt;
   const ms = new Date(String(t)).getTime();
   return Number.isFinite(ms) ? ms : 0;
+}
+
+function statusOf(p: any): "WIN" | "LOSS" | "EVEN" {
+  const n = Number(p?.netProfit ?? 0);
+  if (n > 0) return "WIN";
+  if (n < 0) return "LOSS";
+  return "EVEN";
+}
+
+function badgeStyle(kind: "WIN" | "LOSS" | "EVEN" | "LONG" | "SHORT") {
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+    border: "1px solid var(--border)",
+    lineHeight: 1.3,
+    userSelect: "none",
+    whiteSpace: "nowrap",
+  };
+
+  if (kind === "WIN") return { ...base, background: "rgba(54, 211, 153, 0.16)", color: "var(--text)" };
+  if (kind === "LOSS") return { ...base, background: "rgba(251, 113, 133, 0.16)", color: "var(--text)" };
+  if (kind === "EVEN") return { ...base, background: "rgba(255,255,255,0.06)", color: "var(--text)" };
+
+  if (kind === "LONG") return { ...base, background: "rgba(54, 211, 153, 0.10)", color: "var(--text)" };
+  return { ...base, background: "rgba(251, 113, 133, 0.10)", color: "var(--text)" };
 }
 
 export default function PositionsPage() {
@@ -82,14 +98,11 @@ export default function PositionsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
-  // ✅ safe base
   const allPositions = useMemo(() => (data?.positions ?? []) as any[], [data]);
 
-  // ✅ filtering
   const filtered = useMemo(() => {
     let base = allPositions;
 
-    // day filter: prefer closedAt day; fallback openedAt
     if (dayParam) {
       base = base.filter((p: any) => {
         const closed = p.closedAt ? toDayKey(p.closedAt) : null;
@@ -98,29 +111,26 @@ export default function PositionsPage() {
       });
     }
 
-    // ✅ symbol filter (from URL)
     if (symbolParam) {
       base = base.filter((p: any) => String(p.symbol ?? "") === symbolParam);
     }
 
-    // quick filter
     if (quick === "WINNERS") base = base.filter((p: any) => (p.netProfit ?? 0) > 0);
     if (quick === "LOSERS") base = base.filter((p: any) => (p.netProfit ?? 0) < 0);
     if (quick === "LONG") base = base.filter((p: any) => String(p.positionSide ?? "").toUpperCase() === "LONG");
     if (quick === "SHORT") base = base.filter((p: any) => String(p.positionSide ?? "").toUpperCase() === "SHORT");
 
-    // search
     const q = query.trim().toLowerCase();
     if (!q) return base;
 
     return base.filter((p: any) => {
       const id = String(p.id ?? "").toLowerCase();
       const symbol = String(p.symbol ?? "").toLowerCase();
-      return id.includes(q) || symbol.includes(q);
+      const side = String(p.positionSide ?? "").toLowerCase();
+      return id.includes(q) || symbol.includes(q) || side.includes(q);
     });
   }, [allPositions, dayParam, symbolParam, quick, query]);
 
-  // ✅ sorting
   const sorted = useMemo(() => {
     return [...filtered].sort((a: any, b: any) => {
       if (sortKey === "closeDesc") return timeOf(b) - timeOf(a);
@@ -134,12 +144,8 @@ export default function PositionsPage() {
     });
   }, [filtered, sortKey]);
 
-  // ✅ Pro limit
-  const limited = useMemo(() => {
-    return isPro ? sorted : sorted.slice(0, FREE_POSITIONS_LIMIT);
-  }, [sorted, isPro]);
+  const limited = useMemo(() => (isPro ? sorted : sorted.slice(0, FREE_POSITIONS_LIMIT)), [sorted, isPro]);
 
-  // ✅ pagination
   const totalPages = useMemo(() => Math.max(1, Math.ceil(limited.length / pageSize)), [limited.length, pageSize]);
 
   const pageRows = useMemo(() => {
@@ -148,12 +154,10 @@ export default function PositionsPage() {
     return limited.slice(start, start + pageSize);
   }, [limited, page, pageSize, totalPages]);
 
-  // ✅ auto reset page on filter changes
   useEffect(() => {
     setPage(1);
   }, [dayParam, symbolParam, quick, sortKey, query]);
 
-  // ✅ clamp page if list shrinks
   useEffect(() => {
     setPage((p) => Math.min(p, totalPages));
   }, [totalPages]);
@@ -168,6 +172,7 @@ export default function PositionsPage() {
 
     const rows = limited.map((p: any) => ({
       id: p.id,
+      status: statusOf(p),
       symbol: p.symbol,
       side: p.positionSide,
       openedAt: p.openedAt,
@@ -182,16 +187,12 @@ export default function PositionsPage() {
 
     const csv = toCSV(rows);
 
-    const suffixParts = [
-      dayParam ? `day-${dayParam}` : null,
-      symbolParam ? `sym-${symbolParam}` : null,
-    ].filter(Boolean);
-
+    const suffixParts = [dayParam ? `day-${dayParam}` : null, symbolParam ? `sym-${symbolParam}` : null].filter(Boolean);
     const suffix = suffixParts.length ? `-${suffixParts.join("-")}` : "";
     downloadTextFile(`positions${suffix}.csv`, csv);
   }
 
-  // ✅ after hooks: guards
+  // ✅ guards
   if (!data) {
     return (
       <main>
@@ -216,7 +217,6 @@ export default function PositionsPage() {
     );
   }
 
-  // helpers for clearing filters
   function goClearDay() {
     if (symbolParam) router.push(`/positions?symbol=${encodeURIComponent(symbolParam)}`);
     else router.push("/positions");
@@ -227,36 +227,36 @@ export default function PositionsPage() {
     else router.push("/positions");
   }
 
+  const headerNote = [
+    dayParam ? `Day: ${dayParam}` : null,
+    symbolParam ? `Symbol: ${symbolParam}` : null,
+    !isPro && sorted.length > FREE_POSITIONS_LIMIT ? `FREE limit: first ${FREE_POSITIONS_LIMIT}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <main>
+    <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+      {/* Header */}
       <div className="card" style={{ padding: 18, marginBottom: 12 }}>
-        <div className="h1">Positions</div>
-        <p className="p-muted">
-          Session: <b>{data.uploadedFileName}</b> · Showing: <b>{limited.length}</b>
-          {dayParam ? (
-            <>
-              {" "}
-              · Day: <b>{dayParam}</b>
-            </>
-          ) : null}
-          {symbolParam ? (
-            <>
-              {" "}
-              · Symbol: <b>{symbolParam}</b>
-            </>
-          ) : null}
-          {!isPro && sorted.length > FREE_POSITIONS_LIMIT ? (
-            <>
-              {" "}
-              · <span style={{ color: "var(--muted)" }}>FREE limit: first {FREE_POSITIONS_LIMIT}</span>
-            </>
-          ) : null}
-        </p>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+          <div className="h1">Positions</div>
+          <div className="p-muted">
+            Session: <b>{data.uploadedFileName}</b> · Showing: <b>{limited.length}</b>
+          </div>
+        </div>
+
+        {headerNote ? (
+          <div className="p-muted" style={{ marginTop: 6 }}>
+            {headerNote}
+          </div>
+        ) : null}
       </div>
 
       {/* Controls */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Quick chips */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(
               [
@@ -278,6 +278,7 @@ export default function PositionsPage() {
             ))}
           </div>
 
+          {/* Right actions */}
           <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={exportPositionsCSV} className="btn-secondary" title={!isPro ? "Pro feature" : ""}>
               {isPro ? "Export CSV" : "🔒 Export CSV (PRO)"}
@@ -306,6 +307,7 @@ export default function PositionsPage() {
           </div>
         </div>
 
+        {/* Search + Sort */}
         <div style={{ marginTop: 12, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
           <div>
             <label style={{ marginRight: 8 }}>
@@ -314,8 +316,8 @@ export default function PositionsPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="symbol or id…"
-              style={{ padding: "6px 10px", border: "1px solid #ddd", borderRadius: 8 }}
+              placeholder="symbol, id, side…"
+              style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: 10, minWidth: 220 }}
             />
           </div>
 
@@ -337,7 +339,7 @@ export default function PositionsPage() {
         </div>
       </div>
 
-      {/* KPI Bar */}
+      {/* KPIs (compact + trader-like) */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
           <div>
@@ -351,7 +353,7 @@ export default function PositionsPage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Net PnL (sum)</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Net PnL</div>
             <div className={pnlClass(stats.totalNetProfit)} style={{ fontWeight: 900, fontSize: 18 }}>
               {fmt2(stats.totalNetProfit)}
             </div>
@@ -364,12 +366,9 @@ export default function PositionsPage() {
             </div>
           </div>
 
-          <div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Avg Hold</div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>{fmtHoldMinutes(stats.avgHoldMinutes)}</div>
+          <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>
+            (based on current filter)
           </div>
-
-          <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>(KPIs based on current filter)</div>
         </div>
       </div>
 
@@ -377,7 +376,9 @@ export default function PositionsPage() {
       {pageRows.length === 0 ? (
         <div className="card" style={{ padding: 18 }}>
           <h2 style={{ margin: 0 }}>No positions for this filter</h2>
-          <p className="p-muted" style={{ marginTop: 8 }}>Try another filter or clear it.</p>
+          <p className="p-muted" style={{ marginTop: 8 }}>
+            Try another filter or clear it.
+          </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <button onClick={() => setQuick("ALL")} className="btn-secondary">
               Reset quick filter
@@ -396,54 +397,110 @@ export default function PositionsPage() {
         </div>
       ) : (
         <div className="card" style={{ padding: 14 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["Symbol", "Side", "Opened", "Closed", "Qty", "Entry", "Exit", "Net PnL"].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid var(--border)",
-                      padding: 8,
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {pageRows.map((p: any) => (
-                <tr key={p.id} style={{ cursor: "pointer" }} onClick={() => router.push(`/positions/${p.id}`)}>
-                  <td style={{ padding: 8 }}><b>{p.symbol}</b></td>
-                  <td style={{ padding: 8 }}>{p.positionSide}</td>
-                  <td style={{ padding: 8 }}>{p.openedAt}</td>
-                  <td style={{ padding: 8 }}>{p.closedAt ?? "-"}</td>
-                  <td style={{ padding: 8 }}>{p.quantity}</td>
-                  <td style={{ padding: 8 }}>{fmt2(p.entryPrice)}</td>
-                  <td style={{ padding: 8 }}>{fmt2(p.exitPrice)}</td>
-                  <td style={{ padding: 8 }}>
-                    <span className={pnlClass(p.netProfit)}>{fmt2(p.netProfit)}</span>
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["Status", "Symbol", "Side", "Opened", "Closed", "Qty", "Entry", "Exit", "Net PnL"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid var(--border)",
+                        padding: "10px 8px",
+                        fontSize: 12,
+                        color: "var(--muted)",
+                        fontWeight: 900,
+                        letterSpacing: 0.2,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
 
+              <tbody>
+                {pageRows.map((p: any) => {
+                  const st = statusOf(p);
+                  const side = String(p.positionSide ?? "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => router.push(`/positions/${p.id}`)}
+                      style={{
+                        cursor: "pointer",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as any).style.background = "rgba(255,255,255,0.03)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as any).style.background = "transparent";
+                      }}
+                      title="Open position details"
+                    >
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={badgeStyle(st)}>
+                          {st === "WIN" ? "" : st === "LOSS" ? "" : "•"} {st}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: "10px 8px" }}>
+                        <div style={{ fontWeight: 900 }}>{p.symbol}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>{String(p.id ?? "").slice(0, 10)}</div>
+                      </td>
+
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={badgeStyle(side as any)}>{side}</span>
+                      </td>
+
+                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{p.openedAt}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{p.closedAt ?? "-"}</td>
+
+                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{p.quantity}</td>
+                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmt2(p.entryPrice)}</td>
+                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmt2(p.exitPrice)}</td>
+
+                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+                        <span className={pnlClass(p.netProfit)} style={{ fontWeight: 900 }}>
+                          {fmt2(p.netProfit)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: "6px 12px" }}>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="btn-secondary"
+              style={{ padding: "6px 12px" }}
+            >
               Prev
             </button>
 
-            <div>
-              Page <b>{page}</b> / <b>{totalPages}</b>
+            <div style={{ color: "var(--muted)" }}>
+              Page <b style={{ color: "var(--text)" }}>{page}</b> / <b style={{ color: "var(--text)" }}>{totalPages}</b>
             </div>
 
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={{ padding: "6px 12px" }}>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="btn-secondary"
+              style={{ padding: "6px 12px" }}
+            >
               Next
             </button>
+
+            <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>
+              Tip: click a row to open full details.
+            </div>
           </div>
         </div>
       )}

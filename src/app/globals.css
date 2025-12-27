@@ -1,75 +1,122 @@
 @import "tailwindcss";
 
+/* =========================================================
+   THEME TOKENS
+========================================================= */
 :root {
-  --bg: #0b1220;            /* deep navy */
-  --panel: #0f1a2e;         /* slightly lighter */
-  --panel-2: #111f38;
-  --text: #e8eefc;
-  --muted: rgba(232, 238, 252, 0.7);
+  /* Base */
+  --bg: #0b1220;              /* deep navy */
+  --bg-2: #070c16;            /* deeper */
+  --panel: #0f1a2e;           /* surface */
+  --panel-2: #111f38;         /* elevated surface */
+  --text: rgba(232, 238, 252, 0.92);
+  --muted: rgba(232, 238, 252, 0.68);
 
-  --border: rgba(232, 238, 252, 0.12);
+  /* Borders */
+  --border: rgba(232, 238, 252, 0.10);
+  --border-strong: rgba(232, 238, 252, 0.16);
 
-  --accent: #36d399;        /* green */
-  --accent-2: #60a5fa;      /* blue */
-  --danger: #fb7185;        /* red */
+  /* Accents */
+  --accent: #36d399;          /* green */
+  --accent-2: #60a5fa;        /* blue */
+  --danger: #fb7185;          /* red */
 
-  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  /* Effects */
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 8px 22px rgba(0, 0, 0, 0.28);
+
+  --radius: 16px;
+  --radius-sm: 12px;
+
+  --focus: 0 0 0 3px rgba(96, 165, 250, 0.28);
 }
 
-html, body {
+/* =========================================================
+   BASE / RESET
+========================================================= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
   height: 100%;
 }
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 20% -10%, rgba(96,165,250,0.20), transparent 50%),
-              radial-gradient(900px 500px at 90% 0%, rgba(54,211,153,0.18), transparent 55%),
-              var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* ✅ FIX for "bottom color band":
+     Use a stable background that doesn't shift visually when scrolling.
+     We keep a very subtle vignette but anchor it to the page. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(900px 520px at 18% 8%, rgba(96,165,250,0.12), transparent 60%),
+    radial-gradient(900px 520px at 92% 2%, rgba(54,211,153,0.10), transparent 62%),
+    radial-gradient(1200px 900px at 50% 120%, rgba(255,255,255,0.03), transparent 55%);
+  background-attachment: fixed; /* ✅ critical to prevent "banding" feeling */
+  background-repeat: no-repeat;
 }
 
 a {
   color: inherit;
+  text-decoration: none;
 }
 
-button, select, input {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 12px;
-  outline: none;
+::selection {
+  background: rgba(96,165,250,0.25);
 }
 
-button:hover {
-  border-color: rgba(232, 238, 252, 0.22);
-  transform: translateY(-1px);
-  transition: 120ms ease;
+/* Optional: nicer scrollbar (safe on WebKit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 999px;
+  border: 2px solid rgba(0,0,0,0.0);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.18);
 }
 
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none;
-}
-
+/* =========================================================
+   LAYOUT
+========================================================= */
 main {
   max-width: 1100px;
   margin: 28px auto;
   padding: 18px;
 }
 
+/* =========================================================
+   SURFACES
+========================================================= */
 .card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
   border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+
+  /* higher quality surface */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+  backdrop-filter: blur(10px);
 }
 
+/* =========================================================
+   TYPOGRAPHY HELPERS
+========================================================= */
 .h1 {
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 850;
+  letter-spacing: -0.02em;
   margin: 0 0 6px 0;
 }
 
@@ -78,44 +125,65 @@ main {
   margin: 0;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
+/* =========================================================
+   FORM CONTROLS
+========================================================= */
+button,
+select,
+input {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+  outline: none;
+
+  transition: transform 120ms ease, border-color 120ms ease, filter 120ms ease, background 120ms ease;
 }
 
-.table th {
-  text-align: left;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
+input::placeholder {
+  color: rgba(232,238,252,0.45);
 }
 
-.table td {
-  padding: 10px;
-  border-bottom: 1px solid rgba(232, 238, 252, 0.08);
+button:hover,
+select:hover,
+input:hover {
+  border-color: rgba(232, 238, 252, 0.20);
 }
 
-.table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.04);
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  box-shadow: var(--focus);
+  border-color: rgba(96, 165, 250, 0.40);
 }
 
-.table tbody tr {
-  transition: background 120ms ease;
+button:active {
+  transform: translateY(0px);
 }
 
-/* Button Variants */
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =========================================================
+   BUTTON VARIANTS
+========================================================= */
 .btn-primary {
-  background: linear-gradient(180deg, rgba(54,211,153,0.95), rgba(54,211,153,0.85));
+  background: linear-gradient(180deg, rgba(54,211,153,0.98), rgba(54,211,153,0.86));
   color: #052e1c;
-  border: 1px solid rgba(54,211,153,0.6);
-  font-weight: 800;
+  border: 1px solid rgba(54,211,153,0.55);
+  font-weight: 900;
 }
 
 .btn-primary:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.04);
 }
 
 .btn-secondary {
@@ -123,26 +191,30 @@ main {
 }
 
 .btn-danger {
-  background: linear-gradient(180deg, rgba(251,113,133,0.95), rgba(251,113,133,0.85));
+  background: linear-gradient(180deg, rgba(251,113,133,0.98), rgba(251,113,133,0.86));
   color: #3b0a14;
-  border: 1px solid rgba(251,113,133,0.6);
+  border: 1px solid rgba(251,113,133,0.55);
+  font-weight: 900;
+}
+
+/* =========================================================
+   PNL COLORS
+========================================================= */
+.pnl-positive {
+  color: var(--accent);
   font-weight: 800;
 }
-
-.pnl-positive {
-  color: var(--accent); /* grün */
-  font-weight: 700;
-}
-
 .pnl-negative {
-  color: var(--danger); /* rot */
-  font-weight: 700;
+  color: var(--danger);
+  font-weight: 800;
 }
-
 .pnl-zero {
   color: var(--muted);
 }
 
+/* =========================================================
+   BADGES / PILLS
+========================================================= */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -152,40 +224,83 @@ main {
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.04);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 900;
+  letter-spacing: 0.2px;
 }
 
 .badge-green {
-  border-color: rgba(54,211,153,0.35);
+  border-color: rgba(54,211,153,0.30);
   background: rgba(54,211,153,0.12);
   color: var(--accent);
 }
 
 .badge-red {
-  border-color: rgba(251,113,133,0.35);
+  border-color: rgba(251,113,133,0.30);
   background: rgba(251,113,133,0.12);
   color: var(--danger);
 }
 
 .badge-blue {
-  border-color: rgba(96,165,250,0.35);
+  border-color: rgba(96,165,250,0.30);
   background: rgba(96,165,250,0.12);
   color: var(--accent-2);
 }
 
-.table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: rgba(11, 18, 32, 0.92); /* passend zum Dark Theme */
-  backdrop-filter: blur(8px);
+/* =========================================================
+   TABLES
+========================================================= */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(232, 238, 252, 0.07);
+}
+
+.table tbody tr {
+  transition: background 120ms ease;
+}
+
+.table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .table tbody tr:nth-child(even) {
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+/* Sticky header: use panel tone so it doesn't look like a "band" */
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(11, 18, 32, 0.85);
+  backdrop-filter: blur(10px);
 }
 
 .table tr.row-selected {
   outline: 2px solid rgba(96,165,250,0.35);
   background: rgba(96,165,250,0.08) !important;
+}
+
+/* =========================================================
+   REDUCE MOTION
+========================================================= */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
