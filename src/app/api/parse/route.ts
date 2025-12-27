@@ -18,6 +18,21 @@ export async function GET() {
   return NextResponse.json({ ok: true, method: "GET" });
 }
 
+/**
+ * buildPositions() is (currently) inconsistently typed across codebases:
+ * - sometimes returns Position[]
+ * - sometimes returns { positions, openLotsLeft, errors }
+ *
+ * This route supports both without breaking TypeScript builds on Vercel.
+ */
+type BuildPositionsResult =
+  | any[]
+  | {
+      positions: any[];
+      openLotsLeft?: any[];
+      errors?: string[];
+    };
+
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -36,7 +51,11 @@ export async function POST(req: Request) {
     const { trades, errors } = parseBitgetFuturesCSV(text);
 
     // 2) Build positions (FIFO lots)
-    const { positions, openLotsLeft, errors: posErrors } = buildPositions(trades);
+    const posRes = buildPositions(trades) as BuildPositionsResult;
+
+    const positions = Array.isArray(posRes) ? posRes : posRes.positions ?? [];
+    const openLotsLeft = Array.isArray(posRes) ? [] : posRes.openLotsLeft ?? [];
+    const posErrors = Array.isArray(posRes) ? [] : posRes.errors ?? [];
 
     // 3) Positions analytics
     const bySymbolPos = bySymbolPositions(positions);
