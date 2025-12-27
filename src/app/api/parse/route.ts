@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
+
 import { parseBitgetFuturesCSV } from "../../../core/import/bitgetFutures";
+
 import { buildOverview } from "../../../core/analytics/overview";
 import { buildBySymbol } from "../../../core/analytics/bySymbol";
 import { buildByMonth } from "../../../core/analytics/byMonth";
 import { buildByDay } from "../../../core/analytics/byDay";
+
 import { buildPositions } from "@/core/positions/buildPositions";
 import { bySymbolPositions } from "@/core/analytics/bySymbolPositions";
 import { byMonthPositions } from "@/core/analytics/byMonthPositions";
 import { byDayPositions } from "@/core/analytics/byDayPositions";
-
 
 export const runtime = "nodejs";
 
@@ -30,48 +32,51 @@ export async function POST(req: Request) {
 
     const text = await file.text();
 
+    // 1) Parse raw trades
     const { trades, errors } = parseBitgetFuturesCSV(text);
+
+    // 2) Build positions (FIFO lots)
     const { positions, openLotsLeft, errors: posErrors } = buildPositions(trades);
 
+    // 3) Positions analytics
     const bySymbolPos = bySymbolPositions(positions);
     const byMonthPos = byMonthPositions(positions);
     const byDayPos = byDayPositions(positions);
-        const summary = buildOverview(trades);
+
+    // 4) Trade analytics (legacy)
+    const summary = buildOverview(trades);
     const bySymbol = buildBySymbol(trades);
     const byMonth = buildByMonth(trades);
     const byDay = buildByDay(trades);
 
-
     return NextResponse.json({
-        ok: true,
-      
-        summary,
-        bySymbol,
-        byMonth,
-        byDay,
-      
-        rowsParsed: trades.length,
-      
-        trades,                 // aktuell komplett
-        positions,              // ✅ NEU: die gematchten Positionen
-        positionsCount: positions.length,        // optional, hilfreich
-        openPositionsCount: openLotsLeft.length, // optional, hilfreich
+      ok: true,
 
-          // ✅ Positions-Analytics:
-  bySymbolPositions: bySymbolPos,
-  byMonthPositions: byMonthPos,
-  byDayPositions: byDayPos,
-      
-        errors: [...(errors ?? []), ...(posErrors ?? [])], // ✅ zusammenführen
-      });
-      
-      
-      
-      
-      
-      
+      // Trade analytics
+      summary,
+      bySymbol,
+      byMonth,
+      byDay,
+
+      rowsParsed: trades.length,
+
+      // Raw trades
+      trades,
+
+      // ✅ Positions
+      positions,
+      positionsCount: positions.length,
+      openPositionsCount: openLotsLeft.length,
+
+      // ✅ Positions analytics
+      bySymbolPositions: bySymbolPos,
+      byMonthPositions: byMonthPos,
+      byDayPositions: byDayPos,
+
+      // ✅ merged errors
+      errors: [...(errors ?? []), ...(posErrors ?? [])],
+    });
   } catch (e: any) {
-    // Falls irgendwas crasht, bekommst du die echte Fehlermeldung als JSON zurück
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Unknown error", stack: e?.stack ?? null },
       { status: 500 }

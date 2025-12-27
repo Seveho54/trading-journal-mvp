@@ -1,18 +1,36 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useTradeSession } from "../providers/TradeSessionProvider";
 
 type Props = {
   open: boolean;
   title?: string;
   onClose: () => void;
   children: React.ReactNode;
+
+  // ✅ NEW: we pass the currently selected trade into the modal
+  trade?: any;
 };
 
-export function TradeDetailsModal({ open, title = "Trade Details", onClose, children }: Props) {
+export function TradeDetailsModal({ open, title = "Trade Details", onClose, children, trade }: Props) {
   const [copied, setCopied] = useState(false);
 
+  const router = useRouter();
+  const { isPro } = useTradeSession();
+
   if (!open) return null;
+
+  async function copyRaw() {
+    if (!trade) return;
+
+    const text = JSON.stringify(trade.raw ?? trade, null, 2);
+    await navigator.clipboard.writeText(text);
+
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
 
   return (
     <div
@@ -46,22 +64,15 @@ export function TradeDetailsModal({ open, title = "Trade Details", onClose, chil
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              className="btn-secondary"
-              onClick={async () => {
-                try {
-                  const text = typeof children === "string" ? children : "";
-                  await navigator.clipboard.writeText(text);
-                } catch {
-                  // noop
-                }
-                setCopied(true);
-                setTimeout(() => setCopied(false), 900);
-              }}
-              title="Copy (optional)"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
+            {isPro ? (
+              <button className="btn-secondary" onClick={copyRaw} disabled={!trade} title={!trade ? "No trade selected" : ""}>
+                {copied ? "✅ Copied" : "Copy Raw JSON"}
+              </button>
+            ) : (
+              <button className="btn-secondary" onClick={() => router.push("/pricing")} title="Pro feature">
+                🔒 Copy Raw JSON (PRO)
+              </button>
+            )}
 
             <button onClick={onClose} className="btn-secondary">
               Close

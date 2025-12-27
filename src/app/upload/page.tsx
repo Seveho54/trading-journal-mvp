@@ -41,25 +41,23 @@ export default function UploadPage() {
 
     setData({
         summary: json.summary ?? null,
-      
-        // Trades-Analytics (optional weiter behalten)
         bySymbol: json.bySymbol ?? [],
         byMonth: json.byMonth ?? [],
         byDay: json.byDay ?? [],
       
-        // Positions-Analytics (NEU)
+        trades: json.trades ?? [],
+      
+        // ✅ neu:
+        positions: json.positions ?? [],
         bySymbolPositions: json.bySymbolPositions ?? [],
         byMonthPositions: json.byMonthPositions ?? [],
         byDayPositions: json.byDayPositions ?? [],
-      
-        // Trades / Positions
-        trades: json.trades ?? [],
-        positions: json.positions ?? [],
       
         errors: json.errors ?? [],
         rowsParsed: json.rowsParsed ?? 0,
         uploadedFileName: file.name,
       });
+      
       
       
 
