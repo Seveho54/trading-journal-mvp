@@ -7,23 +7,19 @@ import { useTradeSession } from "../providers/TradeSessionProvider";
 function fmt2(n: number) {
   return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
-
 function fmtPercent(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
 }
-
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
 }
 
 function heatBg(pnl: number, maxAbs: number) {
   if (!maxAbs || maxAbs <= 0) return "rgba(255,255,255,0.02)";
-
-  const strength = Math.min(1, Math.abs(pnl) / maxAbs); // 0..1
-  const alpha = 0.08 + strength * 0.22; // 0.08..0.30
-
-  if (pnl > 0) return `rgba(54, 211, 153, ${alpha})`; // green
-  if (pnl < 0) return `rgba(251, 113, 133, ${alpha})`; // red
+  const strength = Math.min(1, Math.abs(pnl) / maxAbs);
+  const alpha = 0.08 + strength * 0.22;
+  if (pnl > 0) return `rgba(54, 211, 153, ${alpha})`;
+  if (pnl < 0) return `rgba(251, 113, 133, ${alpha})`;
   return "rgba(255,255,255,0.02)";
 }
 
@@ -33,59 +29,43 @@ function toDateKey(d: Date) {
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-
 function startOfMonthUTC(d: Date) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
-
 function addDaysUTC(d: Date, days: number) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days));
 }
-
 function monthLabelUTC(d: Date) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
-
 function monthDiffUTC(target: Date, base: Date) {
   return (target.getUTCFullYear() - base.getUTCFullYear()) * 12 + (target.getUTCMonth() - base.getUTCMonth());
 }
-
 function dayKeyFromAnyTs(ts: any) {
-  return String(ts ?? "").slice(0, 10); // YYYY-MM-DD
+  return String(ts ?? "").slice(0, 10);
 }
 
 export default function CalendarPage() {
   const router = useRouter();
   const { data } = useTradeSession();
 
-  // ✅ Safe defaults (works even before data exists)
+  // ✅ ALWAYS safe defaults (hooks always run)
   const byDay = useMemo(() => ((data as any)?.byDayPositions ?? []) as any[], [data]);
   const positions = useMemo(() => ((data as any)?.positions ?? []) as any[], [data]);
   const trades = useMemo(() => ((data as any)?.trades ?? []) as any[], [data]);
 
-  // ✅ Month state MUST NOT depend on variables declared below it
   const [monthOffset, setMonthOffset] = useState(0);
-
-  // ✅ Collapsible daily list (clean MVP)
   const [showDailyList, setShowDailyList] = useState(false);
 
-  // ✅ Default month: month that contains the newest trading day (once data exists)
-  useEffect(() => {
-    if (!byDay || byDay.length === 0) return;
-
-    const newest = [...byDay].sort((a: any, b: any) => String(b.day).localeCompare(String(a.day)))[0];
-    const dayStr = String(newest?.day ?? "");
-    const [yy, mm] = dayStr.split("-").map((x) => parseInt(x, 10));
-    if (!yy || !mm) return;
-
-    const target = new Date(Date.UTC(yy, mm - 1, 1));
-    const now = new Date();
-    const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-
-    setMonthOffset(monthDiffUTC(target, base));
+  // ✅ best/worst days (MUST be above early returns)
+  const sortedAllDays = useMemo(() => {
+    return [...byDay].sort((a: any, b: any) => (b.totalNetProfit ?? 0) - (a.totalNetProfit ?? 0));
   }, [byDay]);
+
+  const best = sortedAllDays.length ? sortedAllDays[0] : null;
+  const worst = sortedAllDays.length ? sortedAllDays[sortedAllDays.length - 1] : null;
 
   const map = useMemo(() => {
     const m = new Map<string, any>();
@@ -98,22 +78,34 @@ export default function CalendarPage() {
     return Math.max(1, ...byDay.map((d: any) => Math.abs(d.totalNetProfit ?? 0)));
   }, [byDay]);
 
+  // ✅ Default month: newest month with data
+  useEffect(() => {
+    if (!byDay.length) return;
+    const newest = [...byDay].sort((a: any, b: any) => String(b.day).localeCompare(String(a.day)))[0];
+    const dayStr = String(newest?.day ?? "");
+    const [yy, mm] = dayStr.split("-").map((x) => parseInt(x, 10));
+    if (!yy || !mm) return;
+
+    const target = new Date(Date.UTC(yy, mm - 1, 1));
+    const now = new Date();
+    const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    setMonthOffset(monthDiffUTC(target, base));
+  }, [byDay]);
+
   // current month = today + offset
   const now = new Date();
   const current = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + monthOffset, 1));
   const currentMonthKey = monthLabelUTC(current); // YYYY-MM
 
+  // calendar grid
   const start = startOfMonthUTC(current);
-
-  // Calendar starts Monday (0=Mon ... 6=Sun)
-  const startWeekday = (start.getUTCDay() + 6) % 7; // Sun(0)->6, Mon(1)->0
+  const startWeekday = (start.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
   const gridStart = addDaysUTC(start, -startWeekday);
 
-  // 6-week grid (42 cells)
   const days: Date[] = [];
   for (let i = 0; i < 42; i++) days.push(addDaysUTC(gridStart, i));
 
-  // ✅ Month KPIs (based on selected month)
+  // ✅ Month KPIs
   const monthStats = useMemo(() => {
     const monthDays = byDay.filter((d: any) => String(d.day ?? "").startsWith(currentMonthKey));
     const tradingDays = monthDays.length;
@@ -128,7 +120,6 @@ export default function CalendarPage() {
       const closedMonth = closedDay ? String(closedDay).slice(0, 7) : null;
       const openedMonth = openedDay ? String(openedDay).slice(0, 7) : null;
 
-      // Prefer closed month, fallback opened month
       if (closedMonth) return closedMonth === currentMonthKey;
       return openedMonth === currentMonthKey;
     });
@@ -139,14 +130,13 @@ export default function CalendarPage() {
 
     const monthTrades = trades.filter((t: any) => {
       const ts = String(t.timestamp ?? "");
-      const statusOk = !t.status || t.status === "EXECUTED";
+      const statusOk = !t.status || String(t.status).toUpperCase() === "EXECUTED";
       return statusOk && ts.startsWith(currentMonthKey);
     });
-    const tradesCount = monthTrades.length;
 
     return {
       monthKey: currentMonthKey,
-      tradesCount,
+      tradesCount: monthTrades.length,
       closedPositions,
       tradingDays,
       monthNetPnl,
@@ -155,7 +145,19 @@ export default function CalendarPage() {
     };
   }, [byDay, positions, trades, currentMonthKey]);
 
-  // ✅ After hooks: safe early returns
+  function goToNewestMonth() {
+    if (!byDay.length) return setMonthOffset(0);
+    const newest = [...byDay].sort((a: any, b: any) => String(b.day).localeCompare(String(a.day)))[0];
+    const [yy, mm] = String(newest.day).split("-").map((x) => parseInt(x, 10));
+    if (!yy || !mm) return;
+
+    const target = new Date(Date.UTC(yy, mm - 1, 1));
+    const now = new Date();
+    const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    setMonthOffset(monthDiffUTC(target, base));
+  }
+
+  // ✅ NOW early returns are safe (no hooks below this line)
   if (!data) {
     return (
       <main style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
@@ -168,7 +170,7 @@ export default function CalendarPage() {
     );
   }
 
-  if (byDay.length === 0) {
+  if (byDay.length === 0 || !best || !worst) {
     return (
       <main style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
         <h1>Calendar</h1>
@@ -178,27 +180,6 @@ export default function CalendarPage() {
         </button>
       </main>
     );
-  }
-
-  // Best/Worst days by NetProfit (overall)
-  const sortedAllDays = useMemo(() => {
-    return [...byDay].sort((a: any, b: any) => (b.totalNetProfit ?? 0) - (a.totalNetProfit ?? 0));
-  }, [byDay]);
-  const best = sortedAllDays[0];
-  const worst = sortedAllDays[sortedAllDays.length - 1];
-
-  // ✅ “This Month” jumps to newest month with data
-  function goToNewestMonth() {
-    if (!byDay.length) return setMonthOffset(0);
-
-    const newest = [...byDay].sort((a: any, b: any) => String(b.day).localeCompare(String(a.day)))[0];
-    const [yy, mm] = String(newest.day).split("-").map((x) => parseInt(x, 10));
-    if (!yy || !mm) return;
-
-    const target = new Date(Date.UTC(yy, mm - 1, 1));
-    const now = new Date();
-    const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    setMonthOffset(monthDiffUTC(target, base));
   }
 
   return (
@@ -237,16 +218,7 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 12,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            color: "var(--muted)",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", flexWrap: "wrap" }}>
           <div style={{ fontSize: 12, fontWeight: 800 }}>Heatmap:</div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -270,7 +242,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Month Header + Controls + Compact KPIs */}
+      {/* Month Header + KPIs */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 900 }}>Month View</div>
@@ -289,7 +261,6 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* ✅ Compact month KPIs (clean MVP) */}
         <div
           style={{
             display: "grid",
@@ -351,9 +322,9 @@ export default function CalendarPage() {
 
           {days.map((d) => {
             const key = toDateKey(d);
-            const stats = map.get(key);
+            const cell = map.get(key);
             const inMonth = d.getUTCMonth() === current.getUTCMonth();
-            const clickable = !!stats;
+            const clickable = !!cell;
 
             return (
               <div
@@ -366,7 +337,7 @@ export default function CalendarPage() {
                   minHeight: 78,
                   opacity: inMonth ? 1 : 0.35,
                   cursor: clickable ? "pointer" : "default",
-                  background: stats ? heatBg(stats.totalNetProfit ?? 0, maxAbsPnl) : "rgba(255,255,255,0.02)",
+                  background: cell ? heatBg(cell.totalNetProfit ?? 0, maxAbsPnl) : "rgba(255,255,255,0.02)",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -375,15 +346,15 @@ export default function CalendarPage() {
                 </div>
 
                 <div style={{ fontSize: 12, marginTop: 6 }}>
-                  {stats ? (
+                  {cell ? (
                     <>
                       <div>
                         PnL:{" "}
-                        <span className={pnlClass(stats.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                          {fmt2(stats.totalNetProfit ?? 0)}
+                        <span className={pnlClass(cell.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
+                          {fmt2(cell.totalNetProfit ?? 0)}
                         </span>
                       </div>
-                      <div style={{ opacity: 0.9 }}>Positions: {stats.positions ?? 0}</div>
+                      <div style={{ opacity: 0.9 }}>Positions: {cell.positions ?? 0}</div>
                     </>
                   ) : (
                     <div style={{ opacity: 0.6 }}>—</div>
@@ -395,18 +366,11 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Daily list (collapsible) */}
+      {/* Daily list */}
       <div className="card" style={{ padding: 14 }}>
         <div
           onClick={() => setShowDailyList((s) => !s)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            cursor: "pointer",
-            userSelect: "none",
-            flexWrap: "wrap",
-          }}
+          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", flexWrap: "wrap" }}
         >
           <h2 style={{ margin: 0 }}>Daily PnL</h2>
           <div className="p-muted">({showDailyList ? "Hide" : "Show"})</div>
@@ -446,11 +410,7 @@ export default function CalendarPage() {
                     .filter((d: any) => String(d.day ?? "").startsWith(currentMonthKey))
                     .sort((a: any, b: any) => String(b.day).localeCompare(String(a.day)))
                     .map((d: any) => (
-                      <tr
-                        key={d.day}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => router.push(`/positions?day=${d.day}`)}
-                      >
+                      <tr key={d.day} style={{ cursor: "pointer" }} onClick={() => router.push(`/positions?day=${d.day}`)}>
                         <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
                           <b>{d.day}</b>
                         </td>
@@ -460,9 +420,7 @@ export default function CalendarPage() {
                             {fmt2(d.totalNetProfit ?? 0)}
                           </span>
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
-                          {fmt2(d.totalRealizedPnl ?? 0)}
-                        </td>
+                        <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>{fmt2(d.totalRealizedPnl ?? 0)}</td>
                       </tr>
                     ))}
                 </tbody>
