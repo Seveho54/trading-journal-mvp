@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fmtMoney, DEFAULT_CCY } from "@/lib/format";
 
 type RawPoint = {
-  date: string;   // "YYYY-MM-DD"
-  pnl: number;    // daily pnl
+  date: string; // "YYYY-MM-DD"
+  pnl: number; // daily pnl
 };
 
 type ViewMode = "EQUITY" | "DAILY";
@@ -36,36 +37,26 @@ function monthKeyUTC(d: Date) {
 
 function weekKeyUTC(d: Date) {
   // ISO-ish week key: YYYY-Wxx
-  // Simple: compute week number based on Thursday method
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   const day = (date.getUTCDay() + 6) % 7; // Mon=0
   date.setUTCDate(date.getUTCDate() - day + 3); // Thursday
+
   const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
   const firstDay = (firstThursday.getUTCDay() + 6) % 7;
   firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDay + 3);
+
   const weekNo = 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 86400000));
   return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-function formatCurrency(n: number) {
-  // nutzt dein de-DE Format, aber ohne Währungssymbol (MVP)
-  // wenn du später Currency-Setting hast: style:"currency"
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n);
-}
-
-function formatCurrency2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-}
-
 function formatXLabel(dateKey: string, bucket: Bucket) {
   if (bucket === "MONTHLY") return dateKey; // YYYY-MM
-  if (bucket === "WEEKLY") return dateKey;  // YYYY-Wxx
+  if (bucket === "WEEKLY") return dateKey; // YYYY-Wxx
   // DAILY -> MM-DD
   return String(dateKey).slice(5);
 }
 
 function niceTicks(min: number, max: number, count = 5) {
-  // Simple "nice" ticks
   const span = max - min;
   if (!Number.isFinite(span) || span <= 0) return [min, max];
 
@@ -93,9 +84,7 @@ function bucketize(raw: RawPoint[], bucket: Bucket) {
   for (const p of sorted) {
     const d = parseDayKey(p.date);
     const key =
-      bucket === "MONTHLY" ? monthKeyUTC(d) :
-      bucket === "WEEKLY" ? weekKeyUTC(d) :
-      dayKeyUTC(d);
+      bucket === "MONTHLY" ? monthKeyUTC(d) : bucket === "WEEKLY" ? weekKeyUTC(d) : dayKeyUTC(d);
 
     map.set(key, (map.get(key) ?? 0) + safeNum(p.pnl));
   }
@@ -173,7 +162,7 @@ export default function EquityCurvePro({
     const W = width;
     const H = height;
 
-    const padL = 56;
+    const padL = 72; // ⬅️ etwas mehr Platz wegen Währungstext
     const padR = 18;
     const padT = 14;
     const padB = 34;
@@ -228,13 +217,21 @@ export default function EquityCurvePro({
 
     ctx.globalAlpha = 1;
 
-    // y labels
+    // y labels (✅ WÄHRUNG)
     ctx.fillStyle = muted;
     ctx.font = "12px system-ui";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
+
     for (const t of ticksY) {
-      ctx.fillText(formatCurrency(t), padL - 10, yAt(t));
+      // Für die Achse eher “clean”: 0 decimals / kompakt
+      // Wenn du es überall mit 2 Dezimalen willst: fmtMoney(t, DEFAULT_CCY)
+      const label = `${new Intl.NumberFormat("de-DE", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(t)} ${String(DEFAULT_CCY).toUpperCase()}`;
+      
+      ctx.fillText(label, padL - 10, yAt(t));
     }
 
     // zero line
@@ -250,9 +247,7 @@ export default function EquityCurvePro({
 
     // x labels: first / mid / last
     const xLabelIdxs =
-      series.length < 6
-        ? [0, series.length - 1]
-        : [0, Math.floor((series.length - 1) / 2), series.length - 1];
+      series.length < 6 ? [0, series.length - 1] : [0, Math.floor((series.length - 1) / 2), series.length - 1];
 
     ctx.fillStyle = muted;
     ctx.textAlign = "center";
@@ -292,7 +287,7 @@ export default function EquityCurvePro({
     } else {
       // DAILY bars around zero
       const zeroY = yAt(0);
-      const barW = Math.max(2, plotW / Math.max(1, values.length) * 0.75);
+      const barW = Math.max(2, (plotW / Math.max(1, values.length)) * 0.75);
 
       values.forEach((v, i) => {
         const x = xAt(i);
@@ -301,11 +296,8 @@ export default function EquityCurvePro({
 
         ctx.fillStyle = v >= 0 ? barPos : barNeg;
 
-        if (v >= 0) {
-          ctx.fillRect(left, y, barW, zeroY - y);
-        } else {
-          ctx.fillRect(left, zeroY, barW, y - zeroY);
-        }
+        if (v >= 0) ctx.fillRect(left, y, barW, zeroY - y);
+        else ctx.fillRect(left, zeroY, barW, y - zeroY);
       });
     }
 
@@ -336,11 +328,7 @@ export default function EquityCurvePro({
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.globalAlpha = 0.9;
-    ctx.fillText(
-      mode === "EQUITY" ? "Equity Curve (Cumulative Net PnL)" : "Daily Net PnL",
-      12,
-      10
-    );
+    ctx.fillText(mode === "EQUITY" ? "Equity Curve (Cumulative Net PnL)" : "Daily Net PnL", 12, 10);
     ctx.globalAlpha = 1;
   }, [series, values, width, height, hoverIdx, mode]);
 
@@ -348,11 +336,7 @@ export default function EquityCurvePro({
     if (hoverIdx === null || !series.length) return null;
     const p = series[hoverIdx];
     const value = mode === "EQUITY" ? p.equity : p.pnl;
-    return {
-      title: p.xKey,
-      value,
-      daily: p.pnl,
-    };
+    return { title: p.xKey, value, daily: p.pnl };
   }, [hoverIdx, series, mode]);
 
   function onMove(e: React.MouseEvent<HTMLDivElement>) {
@@ -363,7 +347,7 @@ export default function EquityCurvePro({
     setMouseX(x);
 
     // map x->idx
-    const padL = 56;
+    const padL = 72;
     const padR = 18;
     const plotW = rect.width - padL - padR;
     const rel = Math.max(0, Math.min(1, (x - padL) / Math.max(1, plotW)));
@@ -376,12 +360,7 @@ export default function EquityCurvePro({
   }
 
   return (
-    <div
-      ref={wrapRef}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
-      style={{ position: "relative", width: "100%" }}
-    >
+    <div ref={wrapRef} onMouseMove={onMove} onMouseLeave={onLeave} style={{ position: "relative", width: "100%" }}>
       <canvas ref={canvasRef} />
 
       {tooltip ? (
@@ -402,12 +381,14 @@ export default function EquityCurvePro({
           }}
         >
           <div style={{ fontWeight: 900 }}>{tooltip.title}</div>
+
           <div style={{ marginTop: 6, color: "var(--muted)" }}>
             {mode === "EQUITY" ? "Equity:" : "PnL:"}{" "}
-            <b style={{ color: "var(--text)" }}>{formatCurrency2(tooltip.value)}</b>
+            <b style={{ color: "var(--text)" }}>{fmtMoney(tooltip.value, DEFAULT_CCY)}</b>
           </div>
+
           <div style={{ marginTop: 4, color: "var(--muted)" }}>
-            Daily: <b style={{ color: "var(--text)" }}>{formatCurrency2(tooltip.daily)}</b>
+            Daily: <b style={{ color: "var(--text)" }}>{fmtMoney(tooltip.daily, DEFAULT_CCY)}</b>
           </div>
         </div>
       ) : null}

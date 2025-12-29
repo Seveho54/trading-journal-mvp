@@ -6,13 +6,7 @@ import { useTradeSession } from "../providers/TradeSessionProvider";
 import { buildPositionStats } from "@/core/analytics/positionStats";
 import EquityCurvePro from "../components/EquityCurve";
 
-function fmt2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-}
-
-function fmtPercent(n: number) {
-  return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
-}
+import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
@@ -55,7 +49,7 @@ function kpiCardStyle(): React.CSSProperties {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { data, isPro, setIsPro } = useTradeSession();
+  const { data, isPro } = useTradeSession();
 
   // ✅ chart toggles
   const [bucket, setBucket] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
@@ -66,7 +60,7 @@ export default function DashboardPage() {
       <main>
         <div className="card" style={{ padding: 18 }}>
           <div className="h1">Dashboard</div>
-          <p className="p-muted">Keine Daten geladen. Bitte zuerst eine CSV hochladen.</p>
+          <p className="p-muted">No data loaded. Please upload a CSV first.</p>
           <div style={{ marginTop: 14 }}>
             <button onClick={() => router.push("/upload")}>Go to Upload</button>
           </div>
@@ -79,7 +73,7 @@ export default function DashboardPage() {
   const positions = useMemo(() => (data?.positions ?? []) as any[], [data]);
   const stats = useMemo(() => buildPositionStats(positions as any), [positions]);
 
-  // ✅ avg pnl / position (fix for missing avgNet property)
+  // ✅ avg pnl / position
   const avgNet = useMemo(() => {
     const count = stats.positions || 0;
     return count > 0 ? safeNumber(stats.totalNetProfit) / count : 0;
@@ -107,7 +101,7 @@ export default function DashboardPage() {
     return [...losers].sort((a: any, b: any) => (a?.netProfit ?? 0) - (b?.netProfit ?? 0))[0];
   }, [positions]);
 
-  // ✅ most traded symbol (by positions count)
+  // ✅ most traded symbol
   const mostTradedSymbol = useMemo(() => {
     if (bySymbolPos?.length) {
       return [...bySymbolPos].sort((a: any, b: any) => (b.positions ?? 0) - (a.positions ?? 0))[0]?.symbol ?? null;
@@ -136,15 +130,12 @@ export default function DashboardPage() {
     return { total: trades.length, executed: executed.length };
   }, [data]);
 
-  // ✅ headline pill
   type PillKind = "WIN" | "LOSS" | "NEUTRAL";
-
   const topLine = useMemo((): { kind: PillKind; net: number } => {
     const net = safeNumber(stats.totalNetProfit);
     const kind: PillKind = net > 0 ? "WIN" : net < 0 ? "LOSS" : "NEUTRAL";
     return { kind, net };
   }, [stats.totalNetProfit]);
-  
 
   // ✅ chart raw points from byDayPositions
   const equityRawPoints = useMemo(() => {
@@ -153,7 +144,7 @@ export default function DashboardPage() {
       .filter((d) => d?.day)
       .sort((a, b) => String(a.day).localeCompare(String(b.day)))
       .map((d) => ({
-        date: String(d.day), // YYYY-MM-DD
+        date: String(d.day),
         pnl: safeNumber(d.totalNetProfit ?? 0),
       }));
   }, [data]);
@@ -174,9 +165,9 @@ export default function DashboardPage() {
           </div>
 
           <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={pillStyle(topLine.kind)}>
-  {topLine.kind === "WIN" ? "PROFITABLE" : topLine.kind === "LOSS" ? "DRAWDOWN" : "BREAKEVEN"}
-</span>
+            <span style={pillStyle(topLine.kind)}>
+              {topLine.kind === "WIN" ? "PROFITABLE" : topLine.kind === "LOSS" ? "DRAWDOWN" : "BREAKEVEN"}
+            </span>
 
             {!isPro ? (
               <button className="btn-primary" onClick={() => router.push("/pricing")}>
@@ -198,12 +189,12 @@ export default function DashboardPage() {
           <div style={kpiCardStyle()}>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Total Net PnL</div>
             <div className={pnlClass(stats.totalNetProfit)} style={{ fontSize: 24, fontWeight: 900, marginTop: 4 }}>
-              {fmt2(stats.totalNetProfit)}
+              {fmtMoney(stats.totalNetProfit, DEFAULT_CCY)}
             </div>
             <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
               Max DD:{" "}
               <span className={pnlClass(stats.maxDrawdown)} style={{ fontWeight: 900 }}>
-                {fmt2(stats.maxDrawdown)}
+                {fmtMoney(stats.maxDrawdown, DEFAULT_CCY)}
               </span>
             </div>
           </div>
@@ -229,16 +220,16 @@ export default function DashboardPage() {
           <div style={kpiCardStyle()}>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Avg PnL / Position</div>
             <div className={pnlClass(avgNet)} style={{ fontSize: 24, fontWeight: 900, marginTop: 4 }}>
-              {fmt2(avgNet)}
+              {fmtMoney(avgNet, DEFAULT_CCY)}
             </div>
             <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
               Avg Win:{" "}
               <span className={pnlClass(stats.avgWin)} style={{ fontWeight: 900 }}>
-                {fmt2(stats.avgWin)}
+                {fmtMoney(stats.avgWin, DEFAULT_CCY)}
               </span>{" "}
               · Avg Loss:{" "}
               <span className={pnlClass(stats.avgLoss)} style={{ fontWeight: 900 }}>
-                {fmt2(stats.avgLoss)}
+                {fmtMoney(stats.avgLoss, DEFAULT_CCY)}
               </span>
             </div>
           </div>
@@ -287,12 +278,12 @@ export default function DashboardPage() {
           {biggestWinPosition ? (
             <>
               <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900 }}>
-                {biggestWinPosition.symbol} · {biggestWinPosition.positionSide}
+                {biggestWinPosition.symbol} · {String(biggestWinPosition.positionSide ?? "").toUpperCase()}
               </div>
               <div style={{ marginTop: 6, color: "var(--muted)" }}>
                 PnL:{" "}
                 <span className="pnl-positive" style={{ fontWeight: 900 }}>
-                  {fmt2(biggestWinPosition.netProfit ?? 0)}
+                  {fmtMoney(biggestWinPosition.netProfit ?? 0, DEFAULT_CCY)}
                 </span>
                 {" · "}
                 Trades: <b style={{ color: "var(--text)" }}>{(biggestWinPosition.trades?.length ?? "-") as any}</b>
@@ -319,12 +310,12 @@ export default function DashboardPage() {
           {biggestLossPosition ? (
             <>
               <div style={{ marginTop: 10, fontSize: 16, fontWeight: 900 }}>
-                {biggestLossPosition.symbol} · {biggestLossPosition.positionSide}
+                {biggestLossPosition.symbol} · {String(biggestLossPosition.positionSide ?? "").toUpperCase()}
               </div>
               <div style={{ marginTop: 6, color: "var(--muted)" }}>
                 PnL:{" "}
                 <span className="pnl-negative" style={{ fontWeight: 900 }}>
-                  {fmt2(biggestLossPosition.netProfit ?? 0)}
+                  {fmtMoney(biggestLossPosition.netProfit ?? 0, DEFAULT_CCY)}
                 </span>
                 {" · "}
                 Trades: <b style={{ color: "var(--text)" }}>{(biggestLossPosition.trades?.length ?? "-") as any}</b>
@@ -355,15 +346,10 @@ export default function DashboardPage() {
             <div style={kpiCardStyle()}>
               <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Most Traded</div>
               <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>{mostTradedSymbol ?? "–"}</div>
-              <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
-                Tip: use Positions filters to drill down
-              </div>
+              <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>Tip: use Positions filters to drill down</div>
               {mostTradedSymbol ? (
                 <div style={{ marginTop: 10 }}>
-                  <button
-                    className="btn-secondary"
-                    onClick={() => router.push(`/positions?symbol=${encodeURIComponent(mostTradedSymbol)}`)}
-                  >
+                  <button className="btn-secondary" onClick={() => router.push(`/positions?symbol=${encodeURIComponent(mostTradedSymbol)}`)}>
                     View Positions
                   </button>
                 </div>
@@ -378,16 +364,13 @@ export default function DashboardPage() {
                   <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 12 }}>
                     Net:{" "}
                     <span className={pnlClass(bestPos.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                      {fmt2(bestPos.totalNetProfit ?? 0)}
+                      {fmtMoney(bestPos.totalNetProfit ?? 0, DEFAULT_CCY)}
                     </span>
                     {" · "}WR: <b style={{ color: "var(--text)" }}>{fmtPercent(bestPos.winRate ?? 0)}</b>
                     {" · "}Pos: <b style={{ color: "var(--text)" }}>{bestPos.positions ?? "-"}</b>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => router.push(`/positions?symbol=${encodeURIComponent(bestPos.symbol)}`)}
-                    >
+                    <button className="btn-secondary" onClick={() => router.push(`/positions?symbol=${encodeURIComponent(bestPos.symbol)}`)}>
                       View Positions
                     </button>
                   </div>
@@ -407,16 +390,13 @@ export default function DashboardPage() {
                   <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 12 }}>
                     Net:{" "}
                     <span className={pnlClass(worstPos.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                      {fmt2(worstPos.totalNetProfit ?? 0)}
+                      {fmtMoney(worstPos.totalNetProfit ?? 0, DEFAULT_CCY)}
                     </span>
                     {" · "}WR: <b style={{ color: "var(--text)" }}>{fmtPercent(worstPos.winRate ?? 0)}</b>
                     {" · "}Pos: <b style={{ color: "var(--text)" }}>{worstPos.positions ?? "-"}</b>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => router.push(`/positions?symbol=${encodeURIComponent(worstPos.symbol)}`)}
-                    >
+                    <button className="btn-secondary" onClick={() => router.push(`/positions?symbol=${encodeURIComponent(worstPos.symbol)}`)}>
                       View Positions
                     </button>
                   </div>
@@ -446,7 +426,7 @@ export default function DashboardPage() {
             <div>
               Total Net:{" "}
               <span className={pnlClass(summary.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                {fmt2(summary.totalNetProfit ?? 0)}
+                {fmtMoney(summary.totalNetProfit ?? 0, DEFAULT_CCY)}
               </span>
             </div>
             <div>
@@ -476,32 +456,15 @@ export default function DashboardPage() {
         <button onClick={() => router.push("/upload")} className="btn-secondary">
           Upload
         </button>
-        <button onClick={() => router.push("/pricing")} className="btn-secondary">
-          Pricing
-        </button>
-      </div>
-
-      {/* Dev toggle (optional) */}
-      {/*
-      <div className="card" style={{ padding: 14, marginTop: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ fontWeight: 900 }}>Plan:</div>
-          <div className="p-muted">
-            {isPro ? <b style={{ color: "var(--text)" }}>PRO</b> : <b style={{ color: "var(--text)" }}>FREE</b>}
-          </div>
-
-          <button onClick={() => setIsPro(!isPro)} style={{ marginLeft: "auto" }}>
-            Toggle (Dev)
-          </button>
-        </div>
-
-<div className="p-muted" style={{ marginTop: 8 }}>
-  Free plan has limited access. Upgrade to Pro to unlock all features.
-</div>
-
+        {
+  /*
+  <button onClick={() => router.push("/pricing")} className="btn-secondary">
+    Pricing
+  </button>
+  */
+}
 
       </div>
-      */}
     </main>
   );
 }

@@ -170,19 +170,21 @@ export function TopNav() {
         </Icon>
       ),
     },
-    {
-      label: "Pricing",
-      href: "/pricing",
-      icon: (
-        <Icon>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-            <path d="M7 7h10v10H7z" stroke="currentColor" opacity=".8" />
-            <path d="M9 9h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M9 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </Icon>
-      ),
-    },
+        /*
+        {
+          label: "Pricing",
+          href: "/pricing",
+          icon: (
+            <Icon>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <path d="M7 7h10v10H7z" stroke="currentColor" opacity=".8" />
+                <path d="M9 9h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M9 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </Icon>
+          ),
+        }
+        */      
   ];
 
   async function copyFeedbackTemplate() {
