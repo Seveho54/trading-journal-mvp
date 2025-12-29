@@ -1,110 +1,105 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 
-export function Sparkline({
-  values,
-  labels,
-  width = 900,
-  height = 160,
-}: {
+type Props = {
   values: number[];
   labels?: string[];
-  width?: number;
   height?: number;
-}) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+};
 
-  const { min, max, pad, innerW, innerH } = useMemo(() => {
-    const min = values.length ? Math.min(...values) : 0;
-    const max = values.length ? Math.max(...values) : 0;
-    const pad = 10;
-    const innerW = width - pad * 2;
-    const innerH = height - pad * 2;
-    return { min, max, pad, innerW, innerH };
-  }, [values, width, height]);
+export function Sparkline({ values, labels = [], height = 120 }: Props) {
+  const w = 600; // internal width (scaled by viewBox)
+  const h = Math.max(60, height);
+  const padX = 14;
+  const padY = 14;
 
-  const scaleX = (i: number) => (values.length === 1 ? pad : pad + (i / (values.length - 1)) * innerW);
-  const scaleY = (v: number) => {
-    if (max === min) return pad + innerH / 2;
-    const t = (v - min) / (max - min);
-    return pad + (1 - t) * innerH;
-  };
+  const safe = useMemo(() => (values ?? []).map((v) => Number(v ?? 0)), [values]);
 
-  const d = values
-    .map((v, i) => `${i === 0 ? "M" : "L"} ${scaleX(i).toFixed(2)} ${scaleY(v).toFixed(2)}`)
-    .join(" ");
+  const { path, area, lastX, lastY, min, max } = useMemo(() => {
+    if (!safe.length) {
+      return { path: "", area: "", lastX: 0, lastY: 0, min: 0, max: 1 };
+    }
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(n);
+    const minV = Math.min(...safe);
+    const maxV = Math.max(...safe);
+    const range = Math.max(1e-9, maxV - minV);
 
-  const hi = hoverIndex ?? null;
-  const hx = hi !== null ? scaleX(hi) : null;
-  const hy = hi !== null ? scaleY(values[hi]) : null;
+    const xStep = (w - padX * 2) / Math.max(1, safe.length - 1);
 
-  function onMove(evt: React.MouseEvent<SVGSVGElement>) {
-    const rect = (evt.currentTarget as any).getBoundingClientRect();
-    const x = evt.clientX - rect.left;
+    const pts = safe.map((v, i) => {
+      const x = padX + i * xStep;
+      // invert y
+      const y = padY + (h - padY * 2) * (1 - (v - minV) / range);
+      return { x, y, v };
+    });
 
-    // x -> index
-    const t = Math.min(1, Math.max(0, (x - pad) / innerW));
-    const idx = Math.round(t * (values.length - 1));
-    setHoverIndex(idx);
-  }
+    const d = pts
+      .map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`))
+      .join(" ");
 
-  function onLeave() {
-    setHoverIndex(null);
-  }
+    const areaD =
+      `M ${pts[0].x} ${h - padY} ` +
+      pts.map((p) => `L ${p.x} ${p.y}`).join(" ") +
+      ` L ${pts[pts.length - 1].x} ${h - padY} Z`;
 
-  if (!values.length) return null;
+    const last = pts[pts.length - 1];
+
+    return { path: d, area: areaD, lastX: last.x, lastY: last.y, min: minV, max: maxV };
+  }, [safe, h]);
+
+  if (!safe.length) return <div className="p-muted">–</div>;
+
+  const lastVal = safe[safe.length - 1];
+  const isUp = safe.length >= 2 ? lastVal >= safe[0] : true;
 
   return (
-    <div style={{ position: "relative" }}>
-      <svg
-        width="100%"
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ border: "1px solid #ddd", borderRadius: 8 }}
-        onMouseMove={onMove}
-        onMouseLeave={onLeave}
-      >
-        <path d={d} fill="none" stroke="black" strokeWidth="2" />
+    <div
+      style={{
+        width: "100%",
+        height: h,
+        borderRadius: 12,
+        border: "1px solid var(--border)",
+        background: "rgba(255,255,255,0.02)",
+        padding: 8,
+      }}
+      title={`min: ${min.toFixed(2)} • max: ${max.toFixed(2)} • last: ${lastVal.toFixed(2)}`}
+    >
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="100%" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="sparkFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={isUp ? "rgba(54,211,153,0.30)" : "rgba(251,113,133,0.30)"} />
+            <stop offset="100%" stopColor="rgba(255,255,255,0.00)" />
+          </linearGradient>
+        </defs>
 
-        {/* baseline at 0 if visible */}
-        {min < 0 && max > 0 && (
-          <line x1={pad} x2={width - pad} y1={scaleY(0)} y2={scaleY(0)} stroke="#bbb" strokeWidth="1" />
-        )}
+        {/* subtle baseline */}
+        <line
+          x1={padX}
+          x2={w - padX}
+          y1={h - padY}
+          y2={h - padY}
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth="1"
+        />
 
-        {/* Hover indicator */}
-        {hi !== null && hx !== null && hy !== null && (
-          <>
-            <line x1={hx} x2={hx} y1={pad} y2={height - pad} stroke="#ddd" strokeWidth="1" />
-            <circle cx={hx} cy={hy} r="4" fill="black" />
-          </>
-        )}
+        {/* area */}
+        <path d={area} fill="url(#sparkFill)" stroke="none" />
+
+        {/* line */}
+        <path
+          d={path}
+          fill="none"
+          stroke={isUp ? "rgba(54,211,153,0.95)" : "rgba(251,113,133,0.95)"}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* last point */}
+        <circle cx={lastX} cy={lastY} r="4" fill="rgba(255,255,255,0.95)" />
+        <circle cx={lastX} cy={lastY} r="7" fill="none" stroke="rgba(255,255,255,0.18)" />
       </svg>
-
-      {/* Tooltip */}
-      {hi !== null && (
-        <div
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: "8px 10px",
-            background: "white",
-            fontFamily: "system-ui",
-            fontSize: 12,
-          }}
-        >
-          <div style={{ opacity: 0.7 }}>Hover</div>
-          <div>
-            <b>{labels?.[hi] ?? `#${hi + 1}`}</b>
-          </div>
-          <div>Equity: <b>{fmt(values[hi])}</b></div>
-        </div>
-      )}
     </div>
   );
 }
