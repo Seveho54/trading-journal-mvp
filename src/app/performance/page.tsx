@@ -310,10 +310,7 @@ function safeNum(x: any) {
             })}
           </div>
         </div>
-  
-        <div className="p-muted" style={{ fontSize: 12, marginTop: 8 }}>
-          Tipp: Scroll horizontal wenn viele Ticker.
-        </div>
+
       </div>
     );
   }
@@ -1260,7 +1257,7 @@ export default function PerformancePage() {
             <div ref={refTicker} className="card" style={{ padding: 16, marginBottom: 12 }}>
         <div style={sectionTitleStyle()}>
           <div style={{ fontWeight: 900 }}>Ticker Analytics</div>
-          <div className="p-muted">Like your sheet: bar chart + compare 2 tickers + ALL/LONG/SHORT tables</div>
+          <div className="p-muted">Bar chart + compare 2 tickers + ALL/LONG/SHORT tables</div>
         </div>
 
         {/* A) Bar chart */}
@@ -1299,7 +1296,7 @@ export default function PerformancePage() {
         </div>
 
         <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
-          Klick auf einen Ticker → öffnet Positions gefiltert.
+          Click on a ticker → opens filtered positions.
         </div>
       </div>
 
@@ -1312,7 +1309,7 @@ export default function PerformancePage() {
         </div>
 
         {risk.count === 0 ? (
-          <div className="p-muted">Noch keine Tagesdaten vorhanden.</div>
+          <div className="p-muted">no data available.</div>
         ) : (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 12 }}>
@@ -1376,7 +1373,8 @@ export default function PerformancePage() {
             </div>
 
             <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
-              Sharpe-lite ist nur eine grobe Orientierung (Mean/Std). Kein Risk-free, kein Annualizing.
+            Sharpe-lite provides a quick risk-adjusted view based on daily returns.
+It excludes a risk-free rate and is not annualized.
             </div>
           </>
         )}

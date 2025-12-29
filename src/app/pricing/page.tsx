@@ -42,9 +42,7 @@ export default function PricingPage() {
             <div className="h1" style={{ marginBottom: 6 }}>
               Pricing
             </div>
-            <p className="p-muted" style={{ margin: 0 }}>
-              MVP “Fake Door” – wir testen, ob Trader für Pro zahlen würden. Noch ohne Payment/Account.
-            </p>
+    
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -68,7 +66,7 @@ export default function PricingPage() {
           </div>
 
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.02 }}>€0</div>
+            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.02 }}>$0</div>
             <div className="p-muted" style={{ marginTop: 2 }}>
               forever
             </div>
@@ -132,7 +130,7 @@ export default function PricingPage() {
           </div>
 
           <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.02 }}>€14,90</div>
+            <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -0.02 }}>$0</div>
             <div className="p-muted" style={{ marginTop: 2 }}>
               per month <span style={{ color: "var(--muted)" }}>· MVP price test</span>
             </div>
@@ -179,26 +177,10 @@ export default function PricingPage() {
             </button>
           </div>
 
-          <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
-            Hinweis: Fake Door. Später ersetzen wir das durch Stripe + Login. (Du kannst PRO aktuell jederzeit togglen.)
-          </div>
+
         </div>
       </div>
 
-      {/* Footer note */}
-      <div className="card" style={{ padding: 14, marginTop: 14 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="badge badge-blue">MVP Note</span>
-          <div className="p-muted" style={{ flex: 1 }}>
-            Pro ist im MVP hauptsächlich für <b>Exports</b> & <b>Detail-Actions</b> gedacht. Das ist der schnellste Weg,
-            Zahlungsbereitschaft zu testen.
-          </div>
-
-          <button className="btn-secondary" onClick={() => router.push("/upload")}>
-            Upload another file
-          </button>
-        </div>
-      </div>
     </main>
   );
 }

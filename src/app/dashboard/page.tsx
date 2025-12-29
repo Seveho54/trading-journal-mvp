@@ -482,6 +482,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Dev toggle (optional) */}
+      {/*
       <div className="card" style={{ padding: 14, marginTop: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 900 }}>Plan:</div>
@@ -494,10 +495,13 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="p-muted" style={{ marginTop: 8 }}>
-          MVP-Fake Door: Free hat Limits. Pro ist unlocked.
-        </div>
+<div className="p-muted" style={{ marginTop: 8 }}>
+  Free plan has limited access. Upgrade to Pro to unlock all features.
+</div>
+
+
       </div>
+      */}
     </main>
   );
 }

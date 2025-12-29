@@ -5,6 +5,13 @@ import React, { useMemo, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { buildPositionStats } from "@/core/analytics/positionStats";
+import { fmtDateTime } from "@/lib/format";
+import { fmtNumber } from "@/lib/format";
+import { currencyFromSymbol, type Currency } from "@/lib/format";
+import { fmtMoney, DEFAULT_CCY } from "@/lib/format";
+
+
+
 
 const FREE_POSITIONS_LIMIT = 200;
 
@@ -186,6 +193,8 @@ export default function PositionsPage() {
       tradesCount: Array.isArray(p.trades) ? p.trades.length : "",
     }));
 
+    
+
     const csv = toCSV(rows);
 
     const suffixParts = [dayParam ? `day-${dayParam}` : null, symbolParam ? `sym-${symbolParam}` : null].filter(Boolean);
@@ -356,8 +365,9 @@ export default function PositionsPage() {
           <div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Net PnL</div>
             <div className={pnlClass(stats.totalNetProfit)} style={{ fontWeight: 900, fontSize: 18 }}>
-              {fmt2(stats.totalNetProfit)}
-            </div>
+  {fmtMoney(stats.totalNetProfit, DEFAULT_CCY)}
+</div>
+
           </div>
 
           <div>
@@ -425,6 +435,8 @@ export default function PositionsPage() {
                 {pageRows.map((p: any) => {
                   const st = statusOf(p);
                   const side = String(p.positionSide ?? "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+                  const ccy: Currency = currencyFromSymbol(p.symbol) ?? "USDT";
+
                   return (
                     <tr
                       key={p.id}
@@ -448,26 +460,37 @@ export default function PositionsPage() {
                       </td>
 
                       <td style={{ padding: "10px 8px" }}>
-                        <div style={{ fontWeight: 900 }}>{p.symbol}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>{String(p.id ?? "").slice(0, 10)}</div>
+                      <div style={{ fontWeight: 900 }}>{p.symbol}</div>
+
+
                       </td>
 
                       <td style={{ padding: "10px 8px" }}>
                         <span style={badgeStyle(side as any)}>{side}</span>
                       </td>
 
-                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{p.openedAt}</td>
-                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{p.closedAt ?? "-"}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{fmtDateTime(p.openedAt)}</td>
+<td style={{ padding: "10px 8px", fontSize: 13 }}>{fmtDateTime(p.closedAt)}</td>
 
-                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{p.quantity}</td>
-                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmt2(p.entryPrice)}</td>
-                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmt2(p.exitPrice)}</td>
 
-                      <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
-                        <span className={pnlClass(p.netProfit)} style={{ fontWeight: 900 }}>
-                          {fmt2(p.netProfit)}
-                        </span>
-                      </td>
+<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+  {fmtNumber(p.quantity)}
+</td>
+
+<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+  {fmtMoney(p.entryPrice, ccy)}
+</td>
+
+<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+  {fmtMoney(p.exitPrice, ccy)}
+</td>
+
+<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+  <span className={pnlClass(p.netProfit)} style={{ fontWeight: 900 }}>
+    {fmtMoney(p.netProfit, ccy)}
+  </span>
+</td>
+
                     </tr>
                   );
                 })}

@@ -84,6 +84,19 @@ export function TopNav() {
 
   const items: NavItem[] = [
     {
+        label: "Upload",
+        href: "/upload",
+        icon: (
+          <Icon>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+              <path d="M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M7 8l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M4 21h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity=".8" />
+            </svg>
+          </Icon>
+        ),
+      },
+    {
       label: "Dashboard",
       href: "/dashboard",
       icon: (
@@ -96,19 +109,7 @@ export function TopNav() {
         </Icon>
       ),
     },
-    {
-      label: "Upload",
-      href: "/upload",
-      icon: (
-        <Icon>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-            <path d="M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M7 8l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M4 21h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity=".8" />
-          </svg>
-        </Icon>
-      ),
-    },
+
     {
       label: "Trades",
       href: "/trades",
@@ -184,37 +185,48 @@ export function TopNav() {
     },
   ];
 
-  function openFeedbackEmail() {
-    const to = "info@seveho.com";
+  async function copyFeedbackTemplate() {
     const plan = isPro ? "PRO" : "FREE";
     const file = data?.uploadedFileName ?? "-";
     const page = pathname ?? "-";
-    const subject = `Feedback Trading Platform (${plan})`;
-
-    const body = [
-      `Hi, ich teste deine Trading Platform.`,
+  
+    const text = [
+      `Feedback – Trading Platform`,
       ``,
       `Plan: ${plan}`,
       `Page: ${page}`,
       `Uploaded file: ${file}`,
       ``,
-      `1) Was war unklar oder hat nicht funktioniert?`,
-      `Antwort:`,
+      `1) What was unclear / broken?`,
+      `-`,
       ``,
-      `2) Was hat dir am meisten geholfen?`,
-      `Antwort:`,
+      `2) What helped the most?`,
+      `-`,
       ``,
-      `3) Würdest du dafür zahlen? Wenn ja: wie viel pro Monat?`,
-      `Antwort:`,
+      `3) Would you pay for this? If yes: how much per month?`,
+      `-`,
       ``,
-      `Optional: Screenshot / Beispiel-Trade / Idee`,
-      ``,
-      `Danke!`,
+      `Optional: screenshot / example trade / idea`,
     ].join("\n");
-
-    const url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = url;
+  
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Copied! Paste it into your email or DM.");
+    } catch {
+      // fallback if clipboard not allowed
+      window.prompt("Copy this text:", text);
+    }
   }
+  
+  function openFeedbackEmailSimple() {
+    const to = "info@seveho.com";
+    const plan = isPro ? "PRO" : "FREE";
+    const subject = `Tradevion Feedback (${plan})`;
+  
+    // keep it SHORT -> more reliable
+    window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}`;
+  }
+  
 
   return (
     <div
@@ -260,7 +272,7 @@ export function TopNav() {
   }}
 >
   <Image
-    src="/logo.png"
+    src="/Logo.png"
     alt="Logo"
     width={54}
     height={54}
@@ -285,19 +297,14 @@ export function TopNav() {
             </span>
           </Badge>
 
-          <button
-            className="btn-secondary"
-            onClick={openFeedbackEmail}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 999,
-              fontWeight: 900,
-              fontSize: 12,
-              border: "1px solid rgba(255,255,255,0.10)",
-            }}
-          >
-            Feedback
-          </button>
+          <button onClick={copyFeedbackTemplate} className="btn-secondary" style={{ padding: "8px 12px" }}>
+  Copy Feedback
+</button>
+
+<button onClick={openFeedbackEmailSimple} style={{ padding: "8px 12px" }}>
+  Email
+</button>
+
         </div>
       </div>
 

@@ -3,16 +3,14 @@
 import { useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useTradeSession } from "../../providers/TradeSessionProvider";
+import { fmtDateTime, fmtMoney, fmtNumber, fmtPercent } from "@/lib/format";
+import {
+    fmtSmartMoney,
+    fmtSmartNumber,
+    DEFAULT_CCY,
+  } from "@/lib/format";
+  
 
-function fmt2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-}
-function fmt6(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(n);
-}
-function fmtPercent(n: number) {
-  return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 2 }).format(n);
-}
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
 }
@@ -98,7 +96,6 @@ export default function PositionDetailPage() {
   const id = String((params as any)?.id ?? "");
 
   const { data, isPro } = useTradeSession();
-
   const [copied, setCopied] = useState(false);
 
   const position = useMemo(() => {
@@ -117,7 +114,7 @@ export default function PositionDetailPage() {
       <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
         <div className="card" style={{ padding: 18 }}>
           <div className="h1">Position</div>
-          <p className="p-muted">Keine Daten geladen. Bitte zuerst eine CSV hochladen.</p>
+          <p className="p-muted">No data loaded. Please upload a CSV first.</p>
           <button onClick={() => router.push("/upload")} className="btn-secondary">
             Go to Upload
           </button>
@@ -131,7 +128,7 @@ export default function PositionDetailPage() {
       <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
         <div className="card" style={{ padding: 18 }}>
           <div className="h1">Position not found</div>
-          <p className="p-muted">Diese Position existiert nicht in der aktuellen Session.</p>
+          <p className="p-muted">This position doesn’t exist in the current session.</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
             <button onClick={() => router.push("/positions")} className="btn-secondary">
               Back to Positions
@@ -147,9 +144,7 @@ export default function PositionDetailPage() {
 
   const holdMins = minutesBetween(position.openedAt, position.closedAt);
   const retPct =
-    position.entryPrice && position.quantity
-      ? (position.netProfit ?? 0) / (position.entryPrice * position.quantity)
-      : null;
+    position.entryPrice && position.quantity ? (position.netProfit ?? 0) / (position.entryPrice * position.quantity) : null;
 
   const posSide = String(position.positionSide ?? "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
   const posStatus = statusOfPnl(position.netProfit);
@@ -242,12 +237,12 @@ export default function PositionDetailPage() {
         <div className="card" style={{ padding: 14 }}>
           <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Net PnL</div>
           <div className={pnlClass(position.netProfit ?? 0)} style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>
-            {fmt2(position.netProfit ?? 0)}
+            {fmtMoney(position.netProfit ?? 0, DEFAULT_CCY)}
           </div>
           <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
             Realized:{" "}
             <span className={pnlClass(position.realizedPnl ?? 0)} style={{ fontWeight: 900 }}>
-              {fmt2(position.realizedPnl ?? 0)}
+              {fmtMoney(position.realizedPnl ?? 0, DEFAULT_CCY)}
             </span>
           </div>
         </div>
@@ -255,7 +250,7 @@ export default function PositionDetailPage() {
         <div className="card" style={{ padding: 14 }}>
           <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Return %</div>
           <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>
-            {retPct === null ? "–" : <span className={pnlClass(retPct)}>{fmtPercent(retPct)}</span>}
+            {retPct === null ? "–" : <span className={pnlClass(retPct)}>{fmtPercent(retPct, 2)}</span>}
           </div>
           <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>vs. entry notionals</div>
         </div>
@@ -263,17 +258,13 @@ export default function PositionDetailPage() {
         <div className="card" style={{ padding: 14 }}>
           <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Hold Time</div>
           <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{fmtHoldMinutes(holdMins)}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
-            Open → Close
-          </div>
+          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>Open → Close</div>
         </div>
 
         <div className="card" style={{ padding: 14 }}>
           <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Trade Events</div>
           <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{trades.length}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
-            within this position
-          </div>
+          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>within this position</div>
         </div>
       </div>
 
@@ -284,23 +275,27 @@ export default function PositionDetailPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Opened</div>
-            <div style={{ fontWeight: 900, marginTop: 4 }}>{position.openedAt}</div>
+            <div style={{ fontWeight: 900, marginTop: 4 }}>{fmtDateTime(position.openedAt)}</div>
           </div>
 
           <div>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Closed</div>
-            <div style={{ fontWeight: 900, marginTop: 4 }}>{position.closedAt ?? "–"}</div>
+            <div style={{ fontWeight: 900, marginTop: 4 }}>
+              {position.closedAt ? fmtDateTime(position.closedAt) : "–"}
+            </div>
           </div>
 
           <div>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Quantity</div>
-            <div style={{ fontWeight: 900, marginTop: 4 }}>{position.quantity}</div>
+            <div style={{ fontWeight: 900, marginTop: 4 }}>{fmtSmartNumber(position.quantity, 6)}
+</div>
           </div>
 
           <div>
             <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 900 }}>Entry → Exit</div>
             <div style={{ fontWeight: 900, marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
-              {fmt6(position.entryPrice)} → {fmt6(position.exitPrice)}
+            {fmtSmartMoney(position.entryPrice, DEFAULT_CCY, 6)} → {fmtSmartMoney(position.exitPrice, DEFAULT_CCY, 6)}
+
             </div>
           </div>
         </div>
@@ -355,7 +350,7 @@ export default function PositionDetailPage() {
                       (e.currentTarget as any).style.background = "transparent";
                     }}
                   >
-                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{t.timestamp}</td>
+                    <td style={{ padding: "10px 8px", whiteSpace: "nowrap" }}>{fmtDateTime(t.timestamp)}</td>
 
                     <td style={{ padding: "10px 8px" }}>
                       <span style={badgeStyle(action === "OPEN" ? "OPEN" : "CLOSE")}>{action || "—"}</span>
@@ -365,15 +360,19 @@ export default function PositionDetailPage() {
                       <span style={badgeStyle(side as any)}>{side}</span>
                     </td>
 
-                    <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{t.quantity}</td>
-                    <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmt6(t.price ?? 0)}</td>
+                    <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>{fmtSmartNumber(t.quantity, 6)}
+</td>
+                    <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
+                    {fmtSmartMoney(t.price ?? 0, DEFAULT_CCY, 6)}
+
+                    </td>
 
                     <td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
                       {t.netProfit === undefined ? (
                         "–"
                       ) : (
                         <span className={pnlClass(t.netProfit)} style={{ fontWeight: 900 }}>
-                          {fmt2(t.netProfit)}
+                          {fmtMoney(t.netProfit, DEFAULT_CCY)}
                         </span>
                       )}
                     </td>
@@ -386,7 +385,6 @@ export default function PositionDetailPage() {
           </table>
         </div>
 
-        {/* Optional raw (kept minimal) */}
         <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 12 }}>
           Tip: “Open in Trades” jumps to the day in your Trade Log.
         </div>
