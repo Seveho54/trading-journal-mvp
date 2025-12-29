@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { TradesTable } from "../test-upload/TradesTable";
 import { TradeDetailsModal } from "../components/TradeDetailsModal";
+import { fmtMoney, fmtQty, fmtPrice, fmtDateTime, asCurrency, DEFAULT_CCY } from "@/lib/format";
+
 
 const FREE_TRADES_LIMIT = 200;
 
@@ -56,6 +58,8 @@ export default function TradesClient() {
   const sortParam = searchParams.get("sort") as SortKey | null;
 
   const { data, isPro } = useTradeSession();
+  const sessionCcy = asCurrency((data as any)?.summary?.currency ?? DEFAULT_CCY);
+
 
   // ✅ State (always)
   const [quick, setQuick] = useState<QuickFilter>("ALL");
@@ -318,8 +322,8 @@ export default function TradesClient() {
               Net PnL (sum)
             </div>
             <div className={pnlClass(kpis.sumNet)} style={{ fontWeight: 900, fontSize: 18 }}>
-              {fmt2(kpis.sumNet)}
-            </div>
+  {fmtMoney(kpis.sumNet, sessionCcy)}
+</div>
           </div>
 
           <div>
@@ -327,8 +331,8 @@ export default function TradesClient() {
               Avg Net / trade
             </div>
             <div className={pnlClass(kpis.avgNet)} style={{ fontWeight: 900, fontSize: 18 }}>
-              {fmt2(kpis.avgNet)}
-            </div>
+  {fmtMoney(kpis.avgNet, sessionCcy)}
+</div>
           </div>
 
           <div>
@@ -354,7 +358,13 @@ export default function TradesClient() {
         <>
           <div className="card" style={{ padding: 14 }}>
             <div style={{ maxHeight: "65vh", overflow: "auto", borderRadius: 12 }}>
-              <TradesTable trades={pageTrades} onRowClick={(t) => setSelectedTrade(t)} selectedId={selectedTrade?.id} />
+            <TradesTable
+  trades={pageTrades}
+  onRowClick={(t) => setSelectedTrade(t)}
+  selectedId={selectedTrade?.id}
+  ccy={sessionCcy}
+/>
+
             </div>
 
             <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
@@ -389,35 +399,26 @@ export default function TradesClient() {
             {selectedTrade && (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div>
-                    <b>Timestamp:</b> {selectedTrade.timestamp}
-                  </div>
-                  <div>
-                    <b>Status:</b> {selectedTrade.status}
-                  </div>
-                  <div>
-                    <b>Symbol:</b> {selectedTrade.symbol}
-                  </div>
-                  <div>
-                    <b>Action:</b> {selectedTrade.action}
-                  </div>
-                  <div>
-                    <b>Side:</b> {selectedTrade.positionSide}
-                  </div>
-                  <div>
-                    <b>Qty:</b> {selectedTrade.quantity}
-                  </div>
-                  <div>
-                    <b>Price:</b> {selectedTrade.price}
-                  </div>
-                  <div>
-                    <b>Net Profit:</b>{" "}
-                    {selectedTrade.netProfit === undefined ? (
-                      "-"
-                    ) : (
-                      <span className={pnlClass(selectedTrade.netProfit)}>{fmt2(selectedTrade.netProfit)}</span>
-                    )}
-                  </div>
+                <div>
+  <b>Timestamp:</b> {fmtDateTime(selectedTrade.timestamp)}
+</div>
+<div>
+  <b>Qty:</b> {fmtQty(selectedTrade.quantity)}
+</div>
+<div>
+  <b>Price:</b> {fmtPrice(selectedTrade.price, 6)}
+</div>
+<div>
+  <b>Net Profit:</b>{" "}
+  {selectedTrade.netProfit === undefined ? (
+    "-"
+  ) : (
+    <span className={pnlClass(selectedTrade.netProfit)} style={{ fontWeight: 900 }}>
+      {fmtMoney(selectedTrade.netProfit, sessionCcy)}
+    </span>
+  )}
+</div>
+
                 </div>
 
                 <h3 style={{ marginTop: 16 }}>Raw</h3>

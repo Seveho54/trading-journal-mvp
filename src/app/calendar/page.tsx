@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
+import { fmtMoney, DEFAULT_CCY } from "@/lib/format";
 
-function fmt2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-}
 function fmtPercent(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
 }
@@ -50,6 +48,9 @@ function dayKeyFromAnyTs(ts: any) {
 export default function CalendarPage() {
   const router = useRouter();
   const { data } = useTradeSession();
+
+  // ✅ currency for session (fallback to DEFAULT_CCY)
+  const ccy = DEFAULT_CCY;
 
   // ✅ ALWAYS safe defaults (hooks always run)
   const byDay = useMemo(() => ((data as any)?.byDayPositions ?? []) as any[], [data]);
@@ -201,7 +202,7 @@ export default function CalendarPage() {
             <div style={{ marginTop: 6 }}>
               Net Profit:{" "}
               <span className={pnlClass(best.totalNetProfit)} style={{ fontWeight: 900 }}>
-                {fmt2(best.totalNetProfit)}
+                {fmtMoney(best.totalNetProfit ?? 0, ccy)}
               </span>
             </div>
           </div>
@@ -212,13 +213,22 @@ export default function CalendarPage() {
             <div style={{ marginTop: 6 }}>
               Net Profit:{" "}
               <span className={pnlClass(worst.totalNetProfit)} style={{ fontWeight: 900 }}>
-                {fmt2(worst.totalNetProfit)}
+                {fmtMoney(worst.totalNetProfit ?? 0, ccy)}
               </span>
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", flexWrap: "wrap" }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "var(--muted)",
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ fontSize: 12, fontWeight: 800 }}>Heatmap:</div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -237,7 +247,7 @@ export default function CalendarPage() {
           </div>
 
           <div style={{ marginLeft: "auto", fontSize: 12 }}>
-            Scale max day |PnL|: <b style={{ color: "var(--text)" }}>{fmt2(maxAbsPnl)}</b>
+            Scale max day |PnL|: <b style={{ color: "var(--text)" }}>{fmtMoney(maxAbsPnl, ccy)}</b>
           </div>
         </div>
       </div>
@@ -286,7 +296,7 @@ export default function CalendarPage() {
               Net PnL
             </div>
             <div className={pnlClass(monthStats.monthNetPnl)} style={{ fontSize: 20, fontWeight: 900 }}>
-              {fmt2(monthStats.monthNetPnl)}
+              {fmtMoney(monthStats.monthNetPnl, ccy)}
             </div>
             <div className="p-muted" style={{ fontSize: 11 }}>
               {monthStats.tradingDays} trading days
@@ -298,7 +308,7 @@ export default function CalendarPage() {
               Avg Daily PnL
             </div>
             <div className={pnlClass(monthStats.avgDailyPnl)} style={{ fontSize: 20, fontWeight: 900 }}>
-              {fmt2(monthStats.avgDailyPnl)}
+              {fmtMoney(monthStats.avgDailyPnl, ccy)}
             </div>
           </div>
 
@@ -351,7 +361,7 @@ export default function CalendarPage() {
                       <div>
                         PnL:{" "}
                         <span className={pnlClass(cell.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                          {fmt2(cell.totalNetProfit ?? 0)}
+                          {fmtMoney(cell.totalNetProfit ?? 0, ccy)}
                         </span>
                       </div>
                       <div style={{ opacity: 0.9 }}>Positions: {cell.positions ?? 0}</div>
@@ -370,7 +380,14 @@ export default function CalendarPage() {
       <div className="card" style={{ padding: 14 }}>
         <div
           onClick={() => setShowDailyList((s) => !s)}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", flexWrap: "wrap" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            cursor: "pointer",
+            userSelect: "none",
+            flexWrap: "wrap",
+          }}
         >
           <h2 style={{ margin: 0 }}>Daily PnL</h2>
           <div className="p-muted">({showDailyList ? "Hide" : "Show"})</div>
@@ -417,10 +434,12 @@ export default function CalendarPage() {
                         <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>{d.positions ?? "-"}</td>
                         <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
                           <span className={pnlClass(d.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                            {fmt2(d.totalNetProfit ?? 0)}
+                            {fmtMoney(d.totalNetProfit ?? 0, ccy)}
                           </span>
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>{fmt2(d.totalRealizedPnl ?? 0)}</td>
+                        <td style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+                          {fmtMoney(d.totalRealizedPnl ?? 0, ccy)}
+                        </td>
                       </tr>
                     ))}
                 </tbody>

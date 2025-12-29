@@ -10,6 +10,13 @@ export function dash(v: any) {
   return v === null || v === undefined || v === "" ? "—" : String(v);
 }
 
+export function asCurrency(input: any): Currency {
+    const s = String(input ?? "").toUpperCase();
+    if (s === "EUR" || s === "USD" || s === "USDT" || s === "USDC" || s === "BTC") return s;
+    return DEFAULT_CCY;
+  }
+
+
 export function fmtNumber(n: any, digits = 2) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "—";
@@ -33,38 +40,68 @@ export function fmtPercent(n: any, digits = 1) {
  * - If you truly have EUR: pass "EUR"
  * - If it's USDT (not ISO), we format as number + " USDT"
  */
-export function fmtMoney(n: any, currency: "EUR" | "USD" | "USDT" | "USDC" | "BTC" = "USDT", digits = 2) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return "—";
-
-  // ISO currencies -> proper Intl currency
-  if (currency === "EUR" || currency === "USD") {
-    return new Intl.NumberFormat(LOCALE, {
-      style: "currency",
-      currency,
+export function fmtMoney(n: any, ccy: Currency = DEFAULT_CCY, digits = 2) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "–";
+    const s = new Intl.NumberFormat(LOCALE, {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     }).format(x);
+    return `${s} ${ccy}`;
   }
 
-  // Non-ISO -> suffix
-  return `${fmtNumber(x, digits)} ${currency}`;
-}
+  // Price: "smart" -> keine unnötigen trailing zeros (0,379200 -> 0,3792)
+  export function fmtPrice(
+    n: number,
+    maxDecimals = 6
+  ): string {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "–";
+  
+    const abs = Math.abs(x);
+  
+    let decimals: number;
+  
+    if (abs >= 1000) decimals = 2;
+    else if (abs >= 100) decimals = 3;
+    else if (abs >= 10) decimals = 3;
+    else if (abs >= 1) decimals = 3;
+    else if (abs >= 0.1) decimals = 4;
+    else if (abs >= 0.01) decimals = 5;
+    else decimals = maxDecimals;
+  
+    return new Intl.NumberFormat("de-DE", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: decimals,
+    }).format(x);
+  }
+  
 
-export function fmtDateTime(ts: any) {
-  if (!ts) return "—";
-  const d = new Date(String(ts));
-  if (Number.isNaN(d.getTime())) return "—";
+  // Qty: ebenfalls ohne trailing zeros (264,0000 -> 264)
+export function fmtQty(n: any, maxDigits = 6) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "–";
+    return new Intl.NumberFormat(LOCALE, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxDigits,
+    }).format(x);
+  }
+  
 
-  return new Intl.DateTimeFormat(LOCALE, {
-    timeZone: TZ,
-    year: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
+// ISO -> nice (20.12.25, 11:07)
+export function fmtDateTime(input: any) {
+    const ms = new Date(String(input ?? "")).getTime();
+    if (!Number.isFinite(ms)) return "–";
+    const d = new Date(ms);
+  
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+  
+    return `${dd}.${mm}.${yy}, ${hh}:${mi}`;
+  }
 
 
 
