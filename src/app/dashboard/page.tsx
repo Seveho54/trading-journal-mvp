@@ -51,42 +51,24 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data, isPro } = useTradeSession();
 
-  // ✅ chart toggles
+  // ✅ Hooks ALWAYS (no early return before these)
   const [bucket, setBucket] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
   const [mode, setMode] = useState<"EQUITY" | "DAILY">("EQUITY");
 
-  if (!data) {
-    return (
-      <main>
-        <div className="card" style={{ padding: 18 }}>
-          <div className="h1">Dashboard</div>
-          <p className="p-muted">No data loaded. Please upload a CSV first.</p>
-          <div style={{ marginTop: 14 }}>
-            <button onClick={() => router.push("/upload")}>Go to Upload</button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // ✅ positions + stats
-  const positions = useMemo(() => (data?.positions ?? []) as any[], [data]);
+  const positions = useMemo(() => ((data?.positions ?? []) as any[]), [data]);
   const stats = useMemo(() => buildPositionStats(positions as any), [positions]);
 
-  // ✅ avg pnl / position
   const avgNet = useMemo(() => {
     const count = stats.positions || 0;
     return count > 0 ? safeNumber(stats.totalNetProfit) / count : 0;
   }, [stats.positions, stats.totalNetProfit]);
 
-  // ✅ by symbol (positions) + best/worst
-  const bySymbolPos = useMemo(() => (data?.bySymbolPositions ?? []) as any[], [data]);
+  const bySymbolPos = useMemo(() => ((data?.bySymbolPositions ?? []) as any[]), [data]);
   const bestPos = bySymbolPos.length ? bySymbolPos[0] : null;
   const worstPos = bySymbolPos.length ? bySymbolPos[bySymbolPos.length - 1] : null;
 
   const summary = (data as any)?.summary ?? null;
 
-  // ✅ biggest win/loss position
   const biggestWinPosition = useMemo(() => {
     if (!positions.length) return null;
     const winners = positions.filter((p: any) => (p?.netProfit ?? 0) > 0);
@@ -101,7 +83,6 @@ export default function DashboardPage() {
     return [...losers].sort((a: any, b: any) => (a?.netProfit ?? 0) - (b?.netProfit ?? 0))[0];
   }, [positions]);
 
-  // ✅ most traded symbol
   const mostTradedSymbol = useMemo(() => {
     if (bySymbolPos?.length) {
       return [...bySymbolPos].sort((a: any, b: any) => (b.positions ?? 0) - (a.positions ?? 0))[0]?.symbol ?? null;
@@ -123,9 +104,8 @@ export default function DashboardPage() {
     return best;
   }, [bySymbolPos, positions]);
 
-  // ✅ trades executed
   const tradesExecuted = useMemo(() => {
-    const trades = ((data as any)?.trades ?? []) as any[];
+    const trades = (((data as any)?.trades ?? []) as any[]) ?? [];
     const executed = trades.filter((t) => !t.status || String(t.status).toUpperCase() === "EXECUTED");
     return { total: trades.length, executed: executed.length };
   }, [data]);
@@ -137,9 +117,8 @@ export default function DashboardPage() {
     return { kind, net };
   }, [stats.totalNetProfit]);
 
-  // ✅ chart raw points from byDayPositions
   const equityRawPoints = useMemo(() => {
-    const byDay = ((data as any)?.byDayPositions ?? []) as any[];
+    const byDay = (((data as any)?.byDayPositions ?? []) as any[]) ?? [];
     return [...byDay]
       .filter((d) => d?.day)
       .sort((a, b) => String(a.day).localeCompare(String(b.day)))
@@ -148,6 +127,21 @@ export default function DashboardPage() {
         pnl: safeNumber(d.totalNetProfit ?? 0),
       }));
   }, [data]);
+
+  // ✅ NOW safe early return (hooks already ran)
+  if (!data) {
+    return (
+      <main>
+        <div className="card" style={{ padding: 18 }}>
+          <div className="h1">Dashboard</div>
+          <p className="p-muted">No data loaded. Please upload a CSV first.</p>
+          <div style={{ marginTop: 14 }}>
+            <button onClick={() => router.push("/upload")}>Go to Upload</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
@@ -456,14 +450,6 @@ export default function DashboardPage() {
         <button onClick={() => router.push("/upload")} className="btn-secondary">
           Upload
         </button>
-        {
-  /*
-  <button onClick={() => router.push("/pricing")} className="btn-secondary">
-    Pricing
-  </button>
-  */
-}
-
       </div>
     </main>
   );

@@ -283,7 +283,7 @@ export function TopNav() {
 </div>
 
           <div style={{ lineHeight: 1 }}>
-            <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Trading Platform</div>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Trading Journal</div>
             <div className="p-muted" style={{ fontSize: 12 }}>
               {isPro ? "PRO" : "FREE"} • {data?.uploadedFileName ? "Session loaded" : "No session"}
             </div>
@@ -298,14 +298,6 @@ export function TopNav() {
               {isPro ? "PRO" : "FREE"}
             </span>
           </Badge>
-
-          <button onClick={copyFeedbackTemplate} className="btn-secondary" style={{ padding: "8px 12px" }}>
-  Copy Feedback
-</button>
-
-<button onClick={openFeedbackEmailSimple} style={{ padding: "8px 12px" }}>
-  Email
-</button>
 
         </div>
       </div>

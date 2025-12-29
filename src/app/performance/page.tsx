@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { Sparkline } from "../components/Sparkline";
 import { buildTradeSummaryFromPositions } from "@/core/analytics/tradeSummaryPositions";
+import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
+
 
 function fmt2(n: number) {
   return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
-function fmtPercent(n: number) {
-  return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
-}
+
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
 }
@@ -43,15 +43,19 @@ function BarChartSimple({
   labels,
   values,
   height = 160,
+  isMoney = false,
 }: {
   labels: string[];
   values: number[];
   height?: number;
+  isMoney?: boolean;
 }) {
   const maxAbs = useMemo(() => {
     if (!values.length) return 1;
     return Math.max(1, ...values.map((v) => Math.abs(v)));
   }, [values]);
+
+  const scaleLabel = isMoney ? fmtMoney(maxAbs, DEFAULT_CCY) : fmt2(maxAbs);
 
   return (
     <div
@@ -64,11 +68,10 @@ function BarChartSimple({
     >
       <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: 12 }}>
         <span>Distribution of P&L</span>
-        <span>scale: ±{fmt2(maxAbs)}</span>
+        <span>scale: ±{scaleLabel}</span>
       </div>
 
       <div style={{ position: "relative", height, marginTop: 10 }}>
-        {/* midline */}
         <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 1, background: "var(--border)" }} />
 
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, values.length)}, 1fr)`, gap: 6, height: "100%" }}>
@@ -76,6 +79,10 @@ function BarChartSimple({
             const hPct = Math.min(1, Math.abs(v) / maxAbs);
             const hPx = Math.max(2, Math.round((height / 2 - 6) * hPct));
             const isPos = v >= 0;
+
+            const title = isMoney
+              ? `${labels[i]} • ${fmtMoney(v, DEFAULT_CCY)}`
+              : `${labels[i]} • count: ${v}`;
 
             return (
               <div key={i} style={{ position: "relative", height: "100%" }}>
@@ -90,7 +97,7 @@ function BarChartSimple({
                     background: isPos ? "rgba(54,211,153,0.45)" : "rgba(251,113,133,0.45)",
                     border: "1px solid rgba(255,255,255,0.10)",
                   }}
-                  title={`${labels[i]} • count: ${v}`}
+                  title={title}
                 />
               </div>
             );
@@ -109,6 +116,7 @@ function BarChartSimple({
     </div>
   );
 }
+
 
 // ======================
 // TICKER ANALYTICS HELPERS (ADD ABOVE PerformancePage)
@@ -253,7 +261,7 @@ function safeNum(x: any) {
       <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(255,255,255,0.02)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 900 }}>Net Profit by Ticker</div>
-          <div className="p-muted" style={{ fontSize: 12 }}>Scale: ±{fmt2(maxAbs)}</div>
+          <div className="p-muted" style={{ fontSize: 12 }}>Scale: ±{fmtMoney(maxAbs, DEFAULT_CCY)}</div>
         </div>
   
         <div style={{ position: "relative", height, marginTop: 12, overflowX: "auto", paddingBottom: 8 }}>
@@ -280,8 +288,8 @@ function safeNum(x: any) {
               return (
                 <div key={r.symbol} style={{ position: "relative", height: "100%" }}>
                   <div
-                    title={`${r.symbol}: ${fmt2(r.net)}`}
-                    style={{
+title={`${r.symbol}: ${fmtMoney(r.net, DEFAULT_CCY)}`}
+style={{
                       position: "absolute",
                       left: 0,
                       right: 0,
@@ -477,7 +485,7 @@ function TickerTableBlock({
                 </td>
                 <td style={{ padding: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                   <span className={pnlClass(r.net ?? 0)} style={{ fontWeight: 900 }}>
-                    {fmt2(r.net ?? 0)}
+                  {fmtMoney(r.net ?? 0, DEFAULT_CCY)}
                   </span>
                 </td>
                 <td style={{ padding: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{r.count ?? 0}</td>
@@ -564,13 +572,13 @@ function TickerTableBlock({
         </div>
   
         <MetricRow label="Total Number of Trades" av={aStats.count} bv={bStats.count} />
-        <MetricRow label="Total Net P&L" av={fmt2(aStats.net)} bv={fmt2(bStats.net)} clsA={pnlClass(aStats.net)} clsB={pnlClass(bStats.net)} />
+        <MetricRow label="Total Net P&L" av={fmtMoney(aStats.net, DEFAULT_CCY)} bv={fmtMoney(bStats.net, DEFAULT_CCY)} clsA={pnlClass(aStats.net)} clsB={pnlClass(bStats.net)} />
         <MetricRow label="Win Rate" av={fmtPercent(aStats.winRate)} bv={fmtPercent(bStats.winRate)} />
         <MetricRow label="Average Trade Duration (days)" av={fmt2(aStats.avgDuration)} bv={fmt2(bStats.avgDuration)} />
-        <MetricRow label="Largest Win" av={fmt2(aStats.largestWin)} bv={fmt2(bStats.largestWin)} clsA={pnlClass(aStats.largestWin)} clsB={pnlClass(bStats.largestWin)} />
-        <MetricRow label="Average Win Size" av={fmt2(aStats.avgWin)} bv={fmt2(bStats.avgWin)} clsA={pnlClass(aStats.avgWin)} clsB={pnlClass(bStats.avgWin)} />
-        <MetricRow label="Largest Loss" av={fmt2(aStats.largestLoss)} bv={fmt2(bStats.largestLoss)} clsA={pnlClass(aStats.largestLoss)} clsB={pnlClass(bStats.largestLoss)} />
-        <MetricRow label="Average Loss Size" av={fmt2(aStats.avgLoss)} bv={fmt2(bStats.avgLoss)} clsA={pnlClass(aStats.avgLoss)} clsB={pnlClass(bStats.avgLoss)} />
+        <MetricRow label="Largest Win" av={fmtMoney(aStats.largestWin, DEFAULT_CCY)} bv={fmtMoney(bStats.largestWin, DEFAULT_CCY)} clsA={pnlClass(aStats.largestWin)} clsB={pnlClass(bStats.largestWin)} />
+        <MetricRow label="Average Win Size" av={fmtMoney(aStats.avgWin, DEFAULT_CCY)} bv={fmtMoney(bStats.avgWin, DEFAULT_CCY)} clsA={pnlClass(aStats.avgWin)} clsB={pnlClass(bStats.avgWin)} />
+        <MetricRow label="Largest Loss" av={fmtMoney(aStats.largestLoss, DEFAULT_CCY)} bv={fmtMoney(bStats.largestLoss, DEFAULT_CCY)} clsA={pnlClass(aStats.largestLoss)} clsB={pnlClass(bStats.largestLoss)} />
+        <MetricRow label="Average Loss Size" av={fmtMoney(aStats.avgLoss, DEFAULT_CCY)} bv={fmtMoney(bStats.avgLoss, DEFAULT_CCY)} clsA={pnlClass(aStats.avgLoss)} clsB={pnlClass(bStats.avgLoss)} />
         <MetricRow label="Most used strategy" av={aStats.mostUsed} bv={bStats.mostUsed} />
   
         <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 10, paddingTop: 10 }}>
@@ -578,14 +586,16 @@ function TickerTableBlock({
           <div style={{ display: "flex", gap: 8 }}>
             {aLast.map((x, i) => (
               <span key={i} className={pnlClass(x)} style={{ fontWeight: 900 }}>
-                {fmt2(x)}
+                {fmtMoney(x, DEFAULT_CCY)}
+
               </span>
             ))}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {bLast.map((x, i) => (
               <span key={i} className={pnlClass(x)} style={{ fontWeight: 900 }}>
-                {fmt2(x)}
+                {fmtMoney(x, DEFAULT_CCY)}
+
               </span>
             ))}
           </div>
@@ -960,10 +970,11 @@ export default function PerformancePage() {
             <div style={cardInner()}>
               <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>TOTAL P&L</div>
               <div className={pnlClass(summary.totalNetProfit)} style={{ fontSize: 26, fontWeight: 900, marginTop: 4 }}>
-                {fmt2(summary.totalNetProfit)}
+              {fmtMoney(summary.totalNetProfit, DEFAULT_CCY)}
               </div>
               <div className="p-muted" style={{ fontSize: 12, marginTop: 6 }}>
-                Expectancy: <b style={{ color: "var(--text)" }}>{fmt2(summary.expectancy)}</b> / position
+                Expectancy: <b style={{ color: "var(--text)" }}>{fmtMoney(summary.expectancy, DEFAULT_CCY)}
+</b> / position
               </div>
             </div>
 
@@ -981,8 +992,10 @@ export default function PerformancePage() {
                 {Number.isFinite(summary.profitFactor) ? summary.profitFactor.toFixed(2) : "∞"}
               </div>
               <div className="p-muted" style={{ fontSize: 12, marginTop: 6 }}>
-                GP: <span className={pnlClass(summary.grossProfit)}>{fmt2(summary.grossProfit)}</span> · GL:{" "}
-                <span className={pnlClass(summary.grossLoss)}>{fmt2(summary.grossLoss)}</span>
+                GP: <span className={pnlClass(summary.grossProfit)}>{fmtMoney(summary.grossProfit, DEFAULT_CCY)}</span>
+ · GL:{" "}
+ <span className={pnlClass(summary.grossLoss)}>{fmtMoney(summary.grossLoss, DEFAULT_CCY)}</span>
+
               </div>
             </div>
           </div>
@@ -1001,7 +1014,8 @@ export default function PerformancePage() {
             <div style={cardInner()}>
               <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>MAX DRAWDOWN</div>
               <div className={pnlClass(summary.maxDrawdown)} style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>
-                {fmt2(summary.maxDrawdown)}
+              {fmtMoney(summary.maxDrawdown, DEFAULT_CCY)}
+
               </div>
               <div className="p-muted" style={{ fontSize: 12, marginTop: 6 }}>
                 Win streak: <b style={{ color: "var(--text)" }}>{summary.maxWinStreak}</b> · Loss streak:{" "}
@@ -1021,7 +1035,8 @@ export default function PerformancePage() {
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontWeight: 900, fontSize: 16 }}>{summary.bestPosition.symbol}</div>
                 <div className={pnlClass(summary.bestPosition.netProfit)} style={{ fontWeight: 900, fontSize: 18 }}>
-                  {fmt2(summary.bestPosition.netProfit)}
+                {fmtMoney(summary.bestPosition.netProfit, DEFAULT_CCY)}
+
                 </div>
                 <button
                   className="btn-secondary"
@@ -1044,7 +1059,8 @@ export default function PerformancePage() {
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontWeight: 900, fontSize: 16 }}>{summary.worstPosition.symbol}</div>
                 <div className={pnlClass(summary.worstPosition.netProfit)} style={{ fontWeight: 900, fontSize: 18 }}>
-                  {fmt2(summary.worstPosition.netProfit)}
+                {fmtMoney(summary.worstPosition.netProfit, DEFAULT_CCY)}
+
                 </div>
                 <button
                   className="btn-secondary"
@@ -1080,21 +1096,24 @@ export default function PerformancePage() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                 <span className="p-muted">Weekly</span>
                 <span className={pnlClass(history.weeklyNet)} style={{ fontWeight: 900 }}>
-                  {fmt2(history.weeklyNet)}
+                {fmtMoney(history.weeklyNet, DEFAULT_CCY)}
+
                 </span>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                 <span className="p-muted">Monthly</span>
                 <span className={pnlClass(history.monthlyNet)} style={{ fontWeight: 900 }}>
-                  {fmt2(history.monthlyNet)}
+                {fmtMoney(history.monthlyNet, DEFAULT_CCY)}
+
                 </span>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                 <span className="p-muted">Yearly</span>
                 <span className={pnlClass(history.yearlyNet)} style={{ fontWeight: 900 }}>
-                  {fmt2(history.yearlyNet)}
+                {fmtMoney(history.yearlyNet, DEFAULT_CCY)}
+
                 </span>
               </div>
             </div>
@@ -1117,7 +1136,8 @@ export default function PerformancePage() {
                         {d.day}
                       </button>
                       <span className={pnlClass(d.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                        {fmt2(d.totalNetProfit ?? 0)}
+                      {fmtMoney(d.totalNetProfit ?? 0, DEFAULT_CCY)}
+
                       </span>
                     </div>
                   )) : <div className="p-muted">–</div>}
@@ -1137,7 +1157,8 @@ export default function PerformancePage() {
                         {d.day}
                       </button>
                       <span className={pnlClass(d.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                        {fmt2(d.totalNetProfit ?? 0)}
+                      {fmtMoney(d.totalNetProfit ?? 0, DEFAULT_CCY)}
+
                       </span>
                     </div>
                   )) : <div className="p-muted">–</div>}
@@ -1155,7 +1176,13 @@ export default function PerformancePage() {
 
             <div style={{ marginTop: 10 }}>
               {history.monthLabels12?.length ? (
-                <BarChartSimple labels={history.monthLabels12.map((m: string) => m.slice(2))} values={history.monthNet12} height={190} />
+                <BarChartSimple
+                labels={history.monthLabels12.map((m: string) => m.slice(2))}
+                values={history.monthNet12}
+                height={190}
+                isMoney
+              />
+              
               ) : (
                 <div className="p-muted">No month data</div>
               )}
@@ -1204,7 +1231,8 @@ export default function PerformancePage() {
                     <div className="p-muted" style={{ fontSize: 12 }}>{r.label}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                       <span className={pnlClass(r.net)} style={{ fontWeight: 900 }}>
-                        {fmt2(r.net)}
+                      {fmtMoney(r.net, DEFAULT_CCY)}
+
                       </span>
                       <span className="p-muted" style={{ fontSize: 12 }}>
                         {r.count}x
@@ -1324,7 +1352,8 @@ export default function PerformancePage() {
               <div style={cardInner()}>
                 <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Avg Day PnL</div>
                 <div className={pnlClass(risk.avgDay)} style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>
-                  {fmt2(risk.avgDay)}
+                {fmtMoney(risk.avgDay, DEFAULT_CCY)}
+
                 </div>
                 <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                   Mean of daily net PnL
@@ -1333,7 +1362,8 @@ export default function PerformancePage() {
 
               <div style={cardInner()}>
                 <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Volatility (Daily σ)</div>
-                <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{fmt2(risk.volatility)}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4 }}>{fmtMoney(risk.volatility, DEFAULT_CCY)}
+</div>
                 <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                   Sharpe-lite: <b style={{ color: "var(--text)" }}>{risk.sharpeLite.toFixed(2)}</b>
                 </div>
@@ -1346,7 +1376,8 @@ export default function PerformancePage() {
                 <div style={{ fontSize: 16, fontWeight: 900, marginTop: 6 }}>{risk.best?.day ?? "-"}</div>
                 <div style={{ marginTop: 6 }}>
                   <span className={pnlClass(risk.best?.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                    {fmt2(risk.best?.totalNetProfit ?? 0)}
+                  {fmtMoney(risk.best?.totalNetProfit ?? 0, DEFAULT_CCY)}
+
                   </span>
                 </div>
                 {risk.best?.day ? (
@@ -1361,7 +1392,8 @@ export default function PerformancePage() {
                 <div style={{ fontSize: 16, fontWeight: 900, marginTop: 6 }}>{risk.worst?.day ?? "-"}</div>
                 <div style={{ marginTop: 6 }}>
                   <span className={pnlClass(risk.worst?.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                    {fmt2(risk.worst?.totalNetProfit ?? 0)}
+                  {fmtMoney(risk.worst?.totalNetProfit ?? 0, DEFAULT_CCY)}
+
                   </span>
                 </div>
                 {risk.worst?.day ? (
@@ -1425,7 +1457,8 @@ It excludes a risk-free rate and is not annualized.
                     <td style={{ padding: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{fmtPercent(s.winRate ?? 0)}</td>
                     <td style={{ padding: 10, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                       <span className={pnlClass(s.totalNetProfit ?? 0)} style={{ fontWeight: 900 }}>
-                        {fmt2(s.totalNetProfit ?? 0)}
+                      {fmtMoney(s.totalNetProfit ?? 0, DEFAULT_CCY)}
+
                       </span>
                     </td>
                   </tr>
