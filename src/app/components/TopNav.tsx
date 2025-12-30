@@ -283,7 +283,8 @@ export function TopNav() {
 </div>
 
           <div style={{ lineHeight: 1 }}>
-            <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Trading Journal</div>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Tradevion – Bitget Trading Analytics & Performance Dashboard
+</div>
             <div className="p-muted" style={{ fontSize: 12 }}>
               {isPro ? "PRO" : "FREE"} • {data?.uploadedFileName ? "Session loaded" : "No session"}
             </div>
