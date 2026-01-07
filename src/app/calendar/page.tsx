@@ -212,7 +212,7 @@ export default function CalendarPage() {
         }}
       >
         <h1>Calendar</h1>
-        <p>Keine Daten geladen. Bitte zuerst eine CSV hochladen.</p>
+        <p>No data loaded. Please upload a CSV first.</p>
         <button
           onClick={() => router.push("/upload")}
           style={{ padding: "6px 12px" }}
@@ -234,7 +234,7 @@ export default function CalendarPage() {
         }}
       >
         <h1>Calendar</h1>
-        <p>Noch keine Tagesdaten vorhanden. Bitte CSV erneut hochladen.</p>
+        <p>No data loaded. Please upload a CSV first.</p>
         <button
           onClick={() => router.push("/upload")}
           style={{ padding: "6px 12px" }}

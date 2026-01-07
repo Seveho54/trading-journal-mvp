@@ -251,7 +251,7 @@ export default function TradesClient() {
         }}
       >
         <h1>Trade Log</h1>
-        <p>Keine Daten geladen. Bitte zuerst eine CSV hochladen.</p>
+        <p>No data loaded. Please upload a CSV first.</p>
         <button
           onClick={() => router.push("/upload")}
           style={{ padding: "6px 12px" }}

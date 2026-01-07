@@ -1286,9 +1286,7 @@ export default function PerformancePage() {
       <main>
         <div className="card" style={{ padding: 18 }}>
           <div className="h1">Performance</div>
-          <p className="p-muted">
-            Keine Daten geladen. Bitte zuerst eine CSV hochladen.
-          </p>
+          <p className="p-muted">No data loaded. Please upload a CSV first.</p>
           <button onClick={() => router.push("/upload")}>Go to Upload</button>
         </div>
       </main>
@@ -2170,6 +2168,68 @@ export default function PerformancePage() {
             <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
               Sharpe-lite provides a quick risk-adjusted view based on daily
               returns. It excludes a risk-free rate and is not annualized.
+            </div>
+            {/* Early Access Overlay */}
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.6)",
+                backdropFilter: "blur(6px)",
+                zIndex: 50,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  background: "#0f172a",
+                  padding: "32px",
+                  borderRadius: "14px",
+                  maxWidth: "420px",
+                  width: "90%",
+                  textAlign: "center",
+                  color: "white",
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+                }}
+              >
+                <h2
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 700,
+                    marginBottom: 12,
+                  }}
+                >
+                  🚀 Early Access
+                </h2>
+
+                <p style={{ opacity: 0.9, marginBottom: 20 }}>
+                  Get <b>3 months of free access</b> to advanced performance
+                  analytics.
+                </p>
+
+                <a
+                  href="https://forms.gle/R5UXUHYy1SWJcBEd9"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    background: "#2563eb",
+                    padding: "12px 16px",
+                    borderRadius: "10px",
+                    color: "white",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  Get Early Access
+                </a>
+
+                <p style={{ fontSize: "12px", opacity: 0.6, marginTop: 14 }}>
+                  No spam · Unsubscribe anytime
+                </p>
+              </div>
             </div>
           </>
         )}

@@ -258,7 +258,7 @@ export default function PositionsPage() {
       <main>
         <div className="card" style={{ padding: 18 }}>
           <h1>Positions</h1>
-          <p className="p-muted">Keine Daten geladen.</p>
+          <p className="p-muted">No data loaded.</p>
           <button onClick={() => router.push("/upload")}>Go to Upload</button>
         </div>
       </main>
