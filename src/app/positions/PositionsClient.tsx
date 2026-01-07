@@ -1,6 +1,5 @@
 "use client";
 
-
 import React, { useMemo, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
@@ -9,9 +8,7 @@ import { fmtDateTime } from "@/lib/format";
 import { fmtNumber } from "@/lib/format";
 import { currencyFromSymbol, type Currency } from "@/lib/format";
 import { fmtMoney, DEFAULT_CCY } from "@/lib/format";
-
-
-
+import { track } from "@vercel/analytics";
 
 const FREE_POSITIONS_LIMIT = 200;
 
@@ -19,10 +16,16 @@ type QuickFilter = "ALL" | "WINNERS" | "LOSERS" | "LONG" | "SHORT";
 type SortKey = "closeDesc" | "closeAsc" | "pnlDesc" | "pnlAsc";
 
 function fmt2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 }
 function fmtPercent(n: number) {
-  return new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(n);
+  return new Intl.NumberFormat("de-DE", {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(n);
 }
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
@@ -30,13 +33,17 @@ function pnlClass(n: number) {
 
 function csvEscape(v: any) {
   const s = String(v ?? "");
-  if (s.includes('"') || s.includes(",") || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+  if (s.includes('"') || s.includes(",") || s.includes("\n"))
+    return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 function toCSV(rows: Record<string, any>[]) {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);
-  const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(","))];
+  const lines = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(",")),
+  ];
   return lines.join("\n");
 }
 function downloadTextFile(filename: string, content: string) {
@@ -82,12 +89,36 @@ function badgeStyle(kind: "WIN" | "LOSS" | "EVEN" | "LONG" | "SHORT") {
     whiteSpace: "nowrap",
   };
 
-  if (kind === "WIN") return { ...base, background: "rgba(54, 211, 153, 0.16)", color: "var(--text)" };
-  if (kind === "LOSS") return { ...base, background: "rgba(251, 113, 133, 0.16)", color: "var(--text)" };
-  if (kind === "EVEN") return { ...base, background: "rgba(255,255,255,0.06)", color: "var(--text)" };
+  if (kind === "WIN")
+    return {
+      ...base,
+      background: "rgba(54, 211, 153, 0.16)",
+      color: "var(--text)",
+    };
+  if (kind === "LOSS")
+    return {
+      ...base,
+      background: "rgba(251, 113, 133, 0.16)",
+      color: "var(--text)",
+    };
+  if (kind === "EVEN")
+    return {
+      ...base,
+      background: "rgba(255,255,255,0.06)",
+      color: "var(--text)",
+    };
 
-  if (kind === "LONG") return { ...base, background: "rgba(54, 211, 153, 0.10)", color: "var(--text)" };
-  return { ...base, background: "rgba(251, 113, 133, 0.10)", color: "var(--text)" };
+  if (kind === "LONG")
+    return {
+      ...base,
+      background: "rgba(54, 211, 153, 0.10)",
+      color: "var(--text)",
+    };
+  return {
+    ...base,
+    background: "rgba(251, 113, 133, 0.10)",
+    color: "var(--text)",
+  };
 }
 
 export default function PositionsPage() {
@@ -123,10 +154,18 @@ export default function PositionsPage() {
       base = base.filter((p: any) => String(p.symbol ?? "") === symbolParam);
     }
 
-    if (quick === "WINNERS") base = base.filter((p: any) => (p.netProfit ?? 0) > 0);
-    if (quick === "LOSERS") base = base.filter((p: any) => (p.netProfit ?? 0) < 0);
-    if (quick === "LONG") base = base.filter((p: any) => String(p.positionSide ?? "").toUpperCase() === "LONG");
-    if (quick === "SHORT") base = base.filter((p: any) => String(p.positionSide ?? "").toUpperCase() === "SHORT");
+    if (quick === "WINNERS")
+      base = base.filter((p: any) => (p.netProfit ?? 0) > 0);
+    if (quick === "LOSERS")
+      base = base.filter((p: any) => (p.netProfit ?? 0) < 0);
+    if (quick === "LONG")
+      base = base.filter(
+        (p: any) => String(p.positionSide ?? "").toUpperCase() === "LONG",
+      );
+    if (quick === "SHORT")
+      base = base.filter(
+        (p: any) => String(p.positionSide ?? "").toUpperCase() === "SHORT",
+      );
 
     const q = query.trim().toLowerCase();
     if (!q) return base;
@@ -152,15 +191,25 @@ export default function PositionsPage() {
     });
   }, [filtered, sortKey]);
 
-  const limited = useMemo(() => (isPro ? sorted : sorted.slice(0, FREE_POSITIONS_LIMIT)), [sorted, isPro]);
+  const limited = useMemo(
+    () => (isPro ? sorted : sorted.slice(0, FREE_POSITIONS_LIMIT)),
+    [sorted, isPro],
+  );
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(limited.length / pageSize)), [limited.length, pageSize]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(limited.length / pageSize)),
+    [limited.length, pageSize],
+  );
 
   const pageRows = useMemo(() => {
     const clampedPage = Math.min(Math.max(1, page), totalPages);
     const start = (clampedPage - 1) * pageSize;
     return limited.slice(start, start + pageSize);
   }, [limited, page, pageSize, totalPages]);
+
+  useEffect(() => {
+    track("view_positions_page");
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -193,11 +242,12 @@ export default function PositionsPage() {
       tradesCount: Array.isArray(p.trades) ? p.trades.length : "",
     }));
 
-    
-
     const csv = toCSV(rows);
 
-    const suffixParts = [dayParam ? `day-${dayParam}` : null, symbolParam ? `sym-${symbolParam}` : null].filter(Boolean);
+    const suffixParts = [
+      dayParam ? `day-${dayParam}` : null,
+      symbolParam ? `sym-${symbolParam}` : null,
+    ].filter(Boolean);
     const suffix = suffixParts.length ? `-${suffixParts.join("-")}` : "";
     downloadTextFile(`positions${suffix}.csv`, csv);
   }
@@ -221,14 +271,17 @@ export default function PositionsPage() {
         <div className="card" style={{ padding: 18 }}>
           <h1>Positions</h1>
           <p>Keine geschlossenen Positionen vorhanden.</p>
-          <button onClick={() => router.push("/upload")}>Upload another file</button>
+          <button onClick={() => router.push("/upload")}>
+            Upload another file
+          </button>
         </div>
       </main>
     );
   }
 
   function goClearDay() {
-    if (symbolParam) router.push(`/positions?symbol=${encodeURIComponent(symbolParam)}`);
+    if (symbolParam)
+      router.push(`/positions?symbol=${encodeURIComponent(symbolParam)}`);
     else router.push("/positions");
   }
 
@@ -240,19 +293,36 @@ export default function PositionsPage() {
   const headerNote = [
     dayParam ? `Day: ${dayParam}` : null,
     symbolParam ? `Symbol: ${symbolParam}` : null,
-    !isPro && sorted.length > FREE_POSITIONS_LIMIT ? `FREE limit: first ${FREE_POSITIONS_LIMIT}` : null,
+    !isPro && sorted.length > FREE_POSITIONS_LIMIT
+      ? `FREE limit: first ${FREE_POSITIONS_LIMIT}`
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
 
   return (
-    <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+    <main
+      style={{
+        maxWidth: 1100,
+        margin: "40px auto",
+        padding: 16,
+        fontFamily: "system-ui",
+      }}
+    >
       {/* Header */}
       <div className="card" style={{ padding: 18, marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div className="h1">Positions</div>
           <div className="p-muted">
-            Session: <b>{data.uploadedFileName}</b> · Showing: <b>{limited.length}</b>
+            Session: <b>{data.uploadedFileName}</b> · Showing:{" "}
+            <b>{limited.length}</b>
           </div>
         </div>
 
@@ -265,7 +335,14 @@ export default function PositionsPage() {
 
       {/* Controls */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           {/* Quick chips */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(
@@ -289,8 +366,19 @@ export default function PositionsPage() {
           </div>
 
           {/* Right actions */}
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={exportPositionsCSV} className="btn-secondary" title={!isPro ? "Pro feature" : ""}>
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={exportPositionsCSV}
+              className="btn-secondary"
+              title={!isPro ? "Pro feature" : ""}
+            >
               {isPro ? "Export CSV" : "🔒 Export CSV (PRO)"}
             </button>
 
@@ -305,20 +393,34 @@ export default function PositionsPage() {
                 <button onClick={goClearDay} className="btn-secondary">
                   Clear Day
                 </button>
-                <button onClick={() => router.push("/calendar")} className="btn-secondary">
+                <button
+                  onClick={() => router.push("/calendar")}
+                  className="btn-secondary"
+                >
                   Back to Calendar
                 </button>
               </>
             ) : null}
 
-            <button onClick={() => router.push("/dashboard")} className="btn-secondary">
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="btn-secondary"
+            >
               Back
             </button>
           </div>
         </div>
 
         {/* Search + Sort */}
-        <div style={{ marginTop: 12, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: "flex",
+            gap: 14,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div>
             <label style={{ marginRight: 8 }}>
               <b>Search:</b>
@@ -327,7 +429,12 @@ export default function PositionsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="symbol, id, side…"
-              style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: 10, minWidth: 220 }}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                minWidth: 220,
+              }}
             />
           </div>
 
@@ -335,7 +442,10 @@ export default function PositionsPage() {
             <label style={{ marginRight: 8 }}>
               <b>Sort:</b>
             </label>
-            <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+            >
               <option value="closeDesc">Closed (newest first)</option>
               <option value="closeAsc">Closed (oldest first)</option>
               <option value="pnlDesc">Net Profit (high → low)</option>
@@ -351,33 +461,52 @@ export default function PositionsPage() {
 
       {/* KPIs (compact + trader-like) */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 18,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Positions</div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>{stats.positions}</div>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>
+              {stats.positions}
+            </div>
           </div>
 
           <div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Winrate</div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>{fmtPercent(stats.winRate)}</div>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>
+              {fmtPercent(stats.winRate)}
+            </div>
           </div>
 
           <div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Net PnL</div>
-            <div className={pnlClass(stats.totalNetProfit)} style={{ fontWeight: 900, fontSize: 18 }}>
-  {fmtMoney(stats.totalNetProfit, DEFAULT_CCY)}
-</div>
-
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>Profit Factor</div>
-            <div style={{ fontWeight: 900, fontSize: 18 }}>
-              {Number.isFinite(stats.profitFactor) ? stats.profitFactor.toFixed(2) : "∞"}
+            <div
+              className={pnlClass(stats.totalNetProfit)}
+              style={{ fontWeight: 900, fontSize: 18 }}
+            >
+              {fmtMoney(stats.totalNetProfit, DEFAULT_CCY)}
             </div>
           </div>
 
-          <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>
+          <div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+              Profit Factor
+            </div>
+            <div style={{ fontWeight: 900, fontSize: 18 }}>
+              {Number.isFinite(stats.profitFactor)
+                ? stats.profitFactor.toFixed(2)
+                : "∞"}
+            </div>
+          </div>
+
+          <div
+            style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}
+          >
             (based on current filter)
           </div>
         </div>
@@ -390,7 +519,14 @@ export default function PositionsPage() {
           <p className="p-muted" style={{ marginTop: 8 }}>
             Try another filter or clear it.
           </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              marginTop: 10,
+            }}
+          >
             <button onClick={() => setQuick("ALL")} className="btn-secondary">
               Reset quick filter
             </button>
@@ -412,7 +548,17 @@ export default function PositionsPage() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  {["Status", "Symbol", "Side", "Opened", "Closed", "Qty", "Entry", "Exit", "Net PnL"].map((h) => (
+                  {[
+                    "Status",
+                    "Symbol",
+                    "Side",
+                    "Opened",
+                    "Closed",
+                    "Qty",
+                    "Entry",
+                    "Exit",
+                    "Net PnL",
+                  ].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -434,7 +580,10 @@ export default function PositionsPage() {
               <tbody>
                 {pageRows.map((p: any) => {
                   const st = statusOf(p);
-                  const side = String(p.positionSide ?? "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+                  const side =
+                    String(p.positionSide ?? "").toUpperCase() === "SHORT"
+                      ? "SHORT"
+                      : "LONG";
                   const ccy: Currency = currencyFromSymbol(p.symbol) ?? "USDT";
 
                   return (
@@ -446,10 +595,12 @@ export default function PositionsPage() {
                         borderBottom: "1px solid var(--border)",
                       }}
                       onMouseEnter={(e) => {
-                        (e.currentTarget as any).style.background = "rgba(255,255,255,0.03)";
+                        (e.currentTarget as any).style.background =
+                          "rgba(255,255,255,0.03)";
                       }}
                       onMouseLeave={(e) => {
-                        (e.currentTarget as any).style.background = "transparent";
+                        (e.currentTarget as any).style.background =
+                          "transparent";
                       }}
                       title="Open position details"
                     >
@@ -460,37 +611,60 @@ export default function PositionsPage() {
                       </td>
 
                       <td style={{ padding: "10px 8px" }}>
-                      <div style={{ fontWeight: 900 }}>{p.symbol}</div>
-
-
+                        <div style={{ fontWeight: 900 }}>{p.symbol}</div>
                       </td>
 
                       <td style={{ padding: "10px 8px" }}>
                         <span style={badgeStyle(side as any)}>{side}</span>
                       </td>
 
-                      <td style={{ padding: "10px 8px", fontSize: 13 }}>{fmtDateTime(p.openedAt)}</td>
-<td style={{ padding: "10px 8px", fontSize: 13 }}>{fmtDateTime(p.closedAt)}</td>
+                      <td style={{ padding: "10px 8px", fontSize: 13 }}>
+                        {fmtDateTime(p.openedAt)}
+                      </td>
+                      <td style={{ padding: "10px 8px", fontSize: 13 }}>
+                        {fmtDateTime(p.closedAt)}
+                      </td>
 
+                      <td
+                        style={{
+                          padding: "10px 8px",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {fmtNumber(p.quantity)}
+                      </td>
 
-<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
-  {fmtNumber(p.quantity)}
-</td>
+                      <td
+                        style={{
+                          padding: "10px 8px",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {fmtMoney(p.entryPrice, ccy)}
+                      </td>
 
-<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
-  {fmtMoney(p.entryPrice, ccy)}
-</td>
+                      <td
+                        style={{
+                          padding: "10px 8px",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {fmtMoney(p.exitPrice, ccy)}
+                      </td>
 
-<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
-  {fmtMoney(p.exitPrice, ccy)}
-</td>
-
-<td style={{ padding: "10px 8px", fontVariantNumeric: "tabular-nums" }}>
-  <span className={pnlClass(p.netProfit)} style={{ fontWeight: 900 }}>
-    {fmtMoney(p.netProfit, ccy)}
-  </span>
-</td>
-
+                      <td
+                        style={{
+                          padding: "10px 8px",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        <span
+                          className={pnlClass(p.netProfit)}
+                          style={{ fontWeight: 900 }}
+                        >
+                          {fmtMoney(p.netProfit, ccy)}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}
@@ -499,7 +673,14 @@ export default function PositionsPage() {
           </div>
 
           {/* Pagination */}
-          <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              marginTop: 12,
+            }}
+          >
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
@@ -510,7 +691,8 @@ export default function PositionsPage() {
             </button>
 
             <div style={{ color: "var(--muted)" }}>
-              Page <b style={{ color: "var(--text)" }}>{page}</b> / <b style={{ color: "var(--text)" }}>{totalPages}</b>
+              Page <b style={{ color: "var(--text)" }}>{page}</b> /{" "}
+              <b style={{ color: "var(--text)" }}>{totalPages}</b>
             </div>
 
             <button
@@ -522,7 +704,13 @@ export default function PositionsPage() {
               Next
             </button>
 
-            <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>
+            <div
+              style={{
+                marginLeft: "auto",
+                color: "var(--muted)",
+                fontSize: 12,
+              }}
+            >
               Tip: click a row to open full details.
             </div>
           </div>

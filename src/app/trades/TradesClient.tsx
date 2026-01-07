@@ -5,16 +5,32 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { TradesTable } from "../test-upload/TradesTable";
 import { TradeDetailsModal } from "../components/TradeDetailsModal";
-import { fmtMoney, fmtQty, fmtPrice, fmtDateTime, asCurrency, DEFAULT_CCY } from "@/lib/format";
-
+import {
+  fmtMoney,
+  fmtQty,
+  fmtPrice,
+  fmtDateTime,
+  asCurrency,
+  DEFAULT_CCY,
+} from "@/lib/format";
 
 const FREE_TRADES_LIMIT = 200;
 
-type QuickFilter = "ALL" | "WINNERS" | "LOSERS" | "OPEN" | "CLOSE" | "LONG" | "SHORT";
+type QuickFilter =
+  | "ALL"
+  | "WINNERS"
+  | "LOSERS"
+  | "OPEN"
+  | "CLOSE"
+  | "LONG"
+  | "SHORT";
 type SortKey = "timeDesc" | "timeAsc" | "pnlDesc" | "pnlAsc";
 
 function fmt2(n: number) {
-  return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
 }
 
 function pnlClass(n: number) {
@@ -23,14 +39,18 @@ function pnlClass(n: number) {
 
 function csvEscape(v: any) {
   const s = String(v ?? "");
-  if (s.includes('"') || s.includes(",") || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+  if (s.includes('"') || s.includes(",") || s.includes("\n"))
+    return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
 function toCSV(rows: Record<string, any>[]) {
   if (!rows.length) return "";
   const headers = Object.keys(rows[0]);
-  const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(","))];
+  const lines = [
+    headers.join(","),
+    ...rows.map((r) => headers.map((h) => csvEscape(r[h])).join(",")),
+  ];
   return lines.join("\n");
 }
 
@@ -58,8 +78,9 @@ export default function TradesClient() {
   const sortParam = searchParams.get("sort") as SortKey | null;
 
   const { data, isPro } = useTradeSession();
-  const sessionCcy = asCurrency((data as any)?.summary?.currency ?? DEFAULT_CCY);
-
+  const sessionCcy = asCurrency(
+    (data as any)?.summary?.currency ?? DEFAULT_CCY,
+  );
 
   // ✅ State (always)
   const [quick, setQuick] = useState<QuickFilter>("ALL");
@@ -73,21 +94,42 @@ export default function TradesClient() {
 
   // ✅ Guarded data
   const trades = useMemo(() => (data?.trades ?? []) as any[], [data]);
-  const symbols = useMemo(() => (data?.bySymbol ?? []).map((s: any) => s.symbol) as string[], [data]);
+  const symbols = useMemo(
+    () => (data?.bySymbol ?? []).map((s: any) => s.symbol) as string[],
+    [data],
+  );
 
   // ✅ Filter
   const filteredTrades = useMemo(() => {
     let base = trades;
 
-    if (dayParam) base = base.filter((t: any) => String(t.timestamp ?? "").startsWith(dayParam));
-    if (selectedSymbol !== "ALL") base = base.filter((t: any) => t.symbol === selectedSymbol);
+    if (dayParam)
+      base = base.filter((t: any) =>
+        String(t.timestamp ?? "").startsWith(dayParam),
+      );
+    if (selectedSymbol !== "ALL")
+      base = base.filter((t: any) => t.symbol === selectedSymbol);
 
-    if (quick === "WINNERS") base = base.filter((t: any) => (t.netProfit ?? 0) > 0);
-    if (quick === "LOSERS") base = base.filter((t: any) => (t.netProfit ?? 0) < 0);
-    if (quick === "OPEN") base = base.filter((t: any) => String(t.action ?? "").toUpperCase() === "OPEN");
-    if (quick === "CLOSE") base = base.filter((t: any) => String(t.action ?? "").toUpperCase() === "CLOSE");
-    if (quick === "LONG") base = base.filter((t: any) => String(t.positionSide ?? "").toUpperCase() === "LONG");
-    if (quick === "SHORT") base = base.filter((t: any) => String(t.positionSide ?? "").toUpperCase() === "SHORT");
+    if (quick === "WINNERS")
+      base = base.filter((t: any) => (t.netProfit ?? 0) > 0);
+    if (quick === "LOSERS")
+      base = base.filter((t: any) => (t.netProfit ?? 0) < 0);
+    if (quick === "OPEN")
+      base = base.filter(
+        (t: any) => String(t.action ?? "").toUpperCase() === "OPEN",
+      );
+    if (quick === "CLOSE")
+      base = base.filter(
+        (t: any) => String(t.action ?? "").toUpperCase() === "CLOSE",
+      );
+    if (quick === "LONG")
+      base = base.filter(
+        (t: any) => String(t.positionSide ?? "").toUpperCase() === "LONG",
+      );
+    if (quick === "SHORT")
+      base = base.filter(
+        (t: any) => String(t.positionSide ?? "").toUpperCase() === "SHORT",
+      );
 
     const q = query.trim().toLowerCase();
     if (!q) return base;
@@ -98,7 +140,13 @@ export default function TradesClient() {
       const action = String(t.action ?? "").toLowerCase();
       const side = String(t.positionSide ?? "").toLowerCase();
       const dirRaw = String(t.raw?.Direction ?? "").toLowerCase();
-      return id.includes(q) || symbol.includes(q) || action.includes(q) || side.includes(q) || dirRaw.includes(q);
+      return (
+        id.includes(q) ||
+        symbol.includes(q) ||
+        action.includes(q) ||
+        side.includes(q) ||
+        dirRaw.includes(q)
+      );
     });
   }, [trades, dayParam, selectedSymbol, quick, query]);
 
@@ -106,8 +154,14 @@ export default function TradesClient() {
   const sortedTrades = useMemo(() => {
     const list = [...filteredTrades];
     return list.sort((a: any, b: any) => {
-      if (sortKey === "timeDesc") return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      if (sortKey === "timeAsc") return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      if (sortKey === "timeDesc")
+        return (
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      if (sortKey === "timeAsc")
+        return (
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
 
       const ap = a.netProfit ?? 0;
       const bp = b.netProfit ?? 0;
@@ -141,14 +195,20 @@ export default function TradesClient() {
   }, [limitedTrades]);
 
   // ✅ Pagination
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(limitedTrades.length / pageSize)), [limitedTrades.length]);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(limitedTrades.length / pageSize)),
+    [limitedTrades.length],
+  );
   const pageTrades = useMemo(() => {
     const start = (page - 1) * pageSize;
     return limitedTrades.slice(start, start + pageSize);
   }, [limitedTrades, page]);
 
   // ✅ Reset page on filter changes
-  useEffect(() => setPage(1), [dayParam, selectedSymbol, quick, query, sortKey]);
+  useEffect(
+    () => setPage(1),
+    [dayParam, selectedSymbol, quick, query, sortKey],
+  );
 
   // ✅ Clamp page when list shrinks
   useEffect(() => {
@@ -182,10 +242,20 @@ export default function TradesClient() {
   // ✅ After hooks: early render
   if (!data) {
     return (
-      <main style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+      <main
+        style={{
+          maxWidth: 900,
+          margin: "40px auto",
+          padding: 16,
+          fontFamily: "system-ui",
+        }}
+      >
         <h1>Trade Log</h1>
         <p>Keine Daten geladen. Bitte zuerst eine CSV hochladen.</p>
-        <button onClick={() => router.push("/upload")} style={{ padding: "6px 12px" }}>
+        <button
+          onClick={() => router.push("/upload")}
+          style={{ padding: "6px 12px" }}
+        >
           Go to Upload
         </button>
       </main>
@@ -195,7 +265,14 @@ export default function TradesClient() {
   const hitsFreeLimit = !isPro && sortedTrades.length > FREE_TRADES_LIMIT;
 
   return (
-    <main style={{ maxWidth: 1100, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+    <main
+      style={{
+        maxWidth: 1100,
+        margin: "40px auto",
+        padding: 16,
+        fontFamily: "system-ui",
+      }}
+    >
       {/* Header */}
       <div className="card" style={{ padding: 18, marginBottom: 12 }}>
         <div className="h1">Trade Log</div>
@@ -204,7 +281,10 @@ export default function TradesClient() {
           {hitsFreeLimit ? (
             <>
               {" "}
-              · <span style={{ color: "var(--muted)" }}>FREE limit: showing first {FREE_TRADES_LIMIT}</span>
+              ·{" "}
+              <span style={{ color: "var(--muted)" }}>
+                FREE limit: showing first {FREE_TRADES_LIMIT}
+              </span>
             </>
           ) : null}
         </div>
@@ -213,7 +293,14 @@ export default function TradesClient() {
       {/* Controls */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
         {/* Quick filters */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(
               [
@@ -237,25 +324,50 @@ export default function TradesClient() {
             ))}
           </div>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={exportTradesCSV} className="btn-secondary" title={!isPro ? "Pro feature" : ""}>
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={exportTradesCSV}
+              className="btn-secondary"
+              title={!isPro ? "Pro feature" : ""}
+            >
               {isPro ? "Export CSV" : "🔒 Export CSV (PRO)"}
             </button>
 
-            <button onClick={() => router.push("/dashboard")} className="btn-secondary">
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="btn-secondary"
+            >
               Back
             </button>
           </div>
         </div>
 
         {/* Inputs */}
-        <div style={{ marginTop: 12, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: "flex",
+            gap: 14,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           {symbols.length > 0 && (
             <div>
               <label style={{ marginRight: 8 }}>
                 <b>Symbol:</b>
               </label>
-              <select value={selectedSymbol} onChange={(e) => setSelectedSymbol(e.target.value)}>
+              <select
+                value={selectedSymbol}
+                onChange={(e) => setSelectedSymbol(e.target.value)}
+              >
                 <option value="ALL">ALL</option>
                 {symbols.map((s) => (
                   <option key={s} value={s}>
@@ -274,7 +386,11 @@ export default function TradesClient() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Order ID, symbol, direction…"
-              style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: 10 }}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+              }}
             />
           </div>
 
@@ -282,7 +398,10 @@ export default function TradesClient() {
             <label style={{ marginRight: 8 }}>
               <b>Sort:</b>
             </label>
-            <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+            >
               <option value="timeDesc">Timestamp (newest)</option>
               <option value="timeAsc">Timestamp (oldest)</option>
               <option value="pnlDesc">Net Profit (high → low)</option>
@@ -291,11 +410,21 @@ export default function TradesClient() {
           </div>
 
           {dayParam ? (
-            <div style={{ display: "flex", gap: 10, alignItems: "center", opacity: 0.9 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                opacity: 0.9,
+              }}
+            >
               <div>
                 Day: <b>{dayParam}</b>
               </div>
-              <button onClick={() => router.push("/trades")} className="btn-secondary">
+              <button
+                onClick={() => router.push("/trades")}
+                className="btn-secondary"
+              >
                 Clear
               </button>
             </div>
@@ -309,7 +438,14 @@ export default function TradesClient() {
 
       {/* KPI Bar */}
       <div className="card" style={{ padding: 14, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 18,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div>
             <div className="p-muted" style={{ fontSize: 11 }}>
               Trades
@@ -321,18 +457,24 @@ export default function TradesClient() {
             <div className="p-muted" style={{ fontSize: 11 }}>
               Net PnL (sum)
             </div>
-            <div className={pnlClass(kpis.sumNet)} style={{ fontWeight: 900, fontSize: 18 }}>
-  {fmtMoney(kpis.sumNet, sessionCcy)}
-</div>
+            <div
+              className={pnlClass(kpis.sumNet)}
+              style={{ fontWeight: 900, fontSize: 18 }}
+            >
+              {fmtMoney(kpis.sumNet, sessionCcy)}
+            </div>
           </div>
 
           <div>
             <div className="p-muted" style={{ fontSize: 11 }}>
               Avg Net / trade
             </div>
-            <div className={pnlClass(kpis.avgNet)} style={{ fontWeight: 900, fontSize: 18 }}>
-  {fmtMoney(kpis.avgNet, sessionCcy)}
-</div>
+            <div
+              className={pnlClass(kpis.avgNet)}
+              style={{ fontWeight: 900, fontSize: 18 }}
+            >
+              {fmtMoney(kpis.avgNet, sessionCcy)}
+            </div>
           </div>
 
           <div>
@@ -341,13 +483,17 @@ export default function TradesClient() {
             </div>
             <div style={{ fontWeight: 900, fontSize: 18 }}>
               {kpis.netCount ? `${Math.round(kpis.winRate * 100)}%` : "–"}
-              <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: 8 }}>
+              <span
+                style={{ color: "var(--muted)", fontSize: 12, marginLeft: 8 }}
+              >
                 ({kpis.wins}W / {kpis.losses}L)
               </span>
             </div>
           </div>
 
-          <div style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}>
+          <div
+            style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 12 }}
+          >
             (based on current filter)
           </div>
         </div>
@@ -357,17 +503,25 @@ export default function TradesClient() {
       {pageTrades.length > 0 ? (
         <>
           <div className="card" style={{ padding: 14 }}>
-            <div style={{ maxHeight: "65vh", overflow: "auto", borderRadius: 12 }}>
-            <TradesTable
-  trades={pageTrades}
-  onRowClick={(t) => setSelectedTrade(t)}
-  selectedId={selectedTrade?.id}
-  ccy={sessionCcy}
-/>
-
+            <div
+              style={{ maxHeight: "65vh", overflow: "auto", borderRadius: 12 }}
+            >
+              <TradesTable
+                trades={pageTrades}
+                onRowClick={(t) => setSelectedTrade(t)}
+                selectedId={selectedTrade?.id}
+                ccy={sessionCcy}
+              />
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+                marginTop: 12,
+              }}
+            >
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
@@ -393,32 +547,44 @@ export default function TradesClient() {
           <TradeDetailsModal
             open={!!selectedTrade}
             onClose={() => setSelectedTrade(null)}
-            title={selectedTrade ? `${selectedTrade.symbol} • ${selectedTrade.id ?? ""}` : "Trade Details"}
+            title={
+              selectedTrade
+                ? `${selectedTrade.symbol} • ${selectedTrade.id ?? ""}`
+                : "Trade Details"
+            }
             trade={selectedTrade ?? undefined}
           >
             {selectedTrade && (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div>
-  <b>Timestamp:</b> {fmtDateTime(selectedTrade.timestamp)}
-</div>
-<div>
-  <b>Qty:</b> {fmtQty(selectedTrade.quantity)}
-</div>
-<div>
-  <b>Price:</b> {fmtPrice(selectedTrade.price, 6)}
-</div>
-<div>
-  <b>Net Profit:</b>{" "}
-  {selectedTrade.netProfit === undefined ? (
-    "-"
-  ) : (
-    <span className={pnlClass(selectedTrade.netProfit)} style={{ fontWeight: 900 }}>
-      {fmtMoney(selectedTrade.netProfit, sessionCcy)}
-    </span>
-  )}
-</div>
-
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <b>Timestamp:</b> {fmtDateTime(selectedTrade.timestamp)}
+                  </div>
+                  <div>
+                    <b>Qty:</b> {fmtQty(selectedTrade.quantity)}
+                  </div>
+                  <div>
+                    <b>Price:</b> {fmtPrice(selectedTrade.price, 6)}
+                  </div>
+                  <div>
+                    <b>Net Profit:</b>{" "}
+                    {selectedTrade.netProfit === undefined ? (
+                      "-"
+                    ) : (
+                      <span
+                        className={pnlClass(selectedTrade.netProfit)}
+                        style={{ fontWeight: 900 }}
+                      >
+                        {fmtMoney(selectedTrade.netProfit, sessionCcy)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <h3 style={{ marginTop: 16 }}>Raw</h3>

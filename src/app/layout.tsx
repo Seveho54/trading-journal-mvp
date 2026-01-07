@@ -4,6 +4,7 @@ import "./globals.css";
 import { TradeSessionProvider } from "./providers/TradeSessionProvider";
 import { TopNav } from "./components/TopNav";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
+import { AnalyticsConsent } from "./components/AnalyticsConsent";
 
 export const metadata: Metadata = {
   title: "Tradevion – Trading Analytics",
@@ -39,6 +40,7 @@ export default function RootLayout({
         <TradeSessionProvider>
           <TopNav />
           {children}
+          <AnalyticsConsent />
         </TradeSessionProvider>
 
         {/* ✅ Vercel Analytics (separat, ok) */}
