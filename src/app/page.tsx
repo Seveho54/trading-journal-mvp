@@ -37,20 +37,26 @@ function StepCard({
             placeItems: "center",
             fontWeight: 900,
             border: "1px solid var(--border)",
-            background: done ? "rgba(54,211,153,0.12)" : "rgba(255,255,255,0.03)",
+            background: done
+              ? "rgba(54,211,153,0.12)"
+              : "rgba(255,255,255,0.03)",
           }}
         >
           {done ? "✓" : step}
         </div>
-        <div style={{ fontWeight: 900 }}>{title}</div>
+        <div style={{ fontWeight: 1000 }}>{title}</div>
       </div>
 
-      <div className="p-muted" style={{ marginTop: 8, lineHeight: 1.35 }}>
+      <div className="p-muted" style={{ marginTop: 8, lineHeight: 1.4 }}>
         {desc}
       </div>
 
       {actions ? (
-        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>{actions}</div>
+        <div
+          style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}
+        >
+          {actions}
+        </div>
       ) : null}
     </div>
   );
@@ -68,7 +74,8 @@ function CodePath({ children }: { children: React.ReactNode }) {
   return (
     <span
       style={{
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontFamily:
+          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         fontSize: 12,
         padding: "2px 6px",
         borderRadius: 8,
@@ -83,6 +90,25 @@ function CodePath({ children }: { children: React.ReactNode }) {
   );
 }
 
+function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.03)",
+        minWidth: 140,
+      }}
+    >
+      <div className="p-muted" style={{ fontSize: 11 }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 4, fontWeight: 1000 }}>{value}</div>
+    </div>
+  );
+}
+
 export default function HomeTutorialPage() {
   const router = useRouter();
   const { data, isPro } = useTradeSession();
@@ -92,224 +118,421 @@ export default function HomeTutorialPage() {
   const hasByDay = ((data as any)?.byDayPositions?.length ?? 0) > 0;
 
   const nextBestRoute = useMemo(() => {
+    // First-time user: start with upload.
     if (!hasData) return "/upload";
-    if (hasByDay) return "/dashboard";
+    // If parsed + daily data exists, Overview/Dashboard is best.
+    if (hasByDay) return "/overview";
+    // Otherwise: Trades list is safe.
     return "/trades";
   }, [hasData, hasByDay]);
 
+  const sessionSummary = useMemo(() => {
+    if (!hasData) return null;
+    return {
+      file: data?.uploadedFileName ?? "-",
+      rows: data?.rowsParsed ?? 0,
+      positions: data?.positions?.length ?? 0,
+    };
+  }, [hasData, data]);
+
   return (
-    <main style={{ maxWidth: 980, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
-      {/* HERO */}
+    <main
+      style={{
+        maxWidth: 980,
+        margin: "40px auto",
+        padding: 16,
+        fontFamily: "system-ui",
+      }}
+    >
+      {/* HERO / POSITIONING */}
       <div className="card" style={{ padding: 18, marginBottom: 14 }}>
-        <div className="h1">Trading Platform</div>
-        <div className="p-muted" style={{ marginTop: 6 }}>
-          Upload → Analyze → Improve. This onboarding shows you exactly what to do.
-        </div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ flex: "1 1 520px" }}>
+            <div className="h1" style={{ marginBottom: 6 }}>
+              Tradevion — Risk Operating System
+            </div>
+            <div className="p-muted" style={{ lineHeight: 1.45 }}>
+              Import your trades → get a clear picture of <b>risk</b>,{" "}
+              <b>drawdowns</b>, and <b>behavioral leaks</b>.
+              <br />
+              This page is your <b>quick start</b>. The real analysis lives in{" "}
+              <b>Overview</b>, <b>Performance</b>, and <b>Risk</b>.
+            </div>
 
-        <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="btn-primary" onClick={() => router.push(nextBestRoute)}>
-            {hasData ? "Open Dashboard" : "Start: Upload CSV"}
-          </button>
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <button
+                className="btn-primary"
+                onClick={() => router.push(nextBestRoute)}
+              >
+                {hasData ? "Continue → Overview" : "Start Free → Upload CSV"}
+              </button>
 
-          <button className="btn-secondary" onClick={() => router.push("/upload")}>
-            Upload
-          </button>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/upload")}
+              >
+                Upload
+              </button>
 
-          {hasData ? (
-            <>
-              <button className="btn-secondary" onClick={() => router.push("/dashboard")}>
-                Dashboard
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/overview")}
+                disabled={!hasData}
+              >
+                Overview
               </button>
-              <button className="btn-secondary" onClick={() => router.push("/calendar")}>
-                Calendar
-              </button>
-              <button className="btn-secondary" onClick={() => router.push("/positions")}>
-                Positions
-              </button>
-              <button className="btn-secondary" onClick={() => router.push("/trades")}>
-                Trades
-              </button>
-              <button className="btn-secondary" onClick={() => router.push("/performance")}>
+
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/performance")}
+                disabled={!hasData}
+              >
                 Performance
               </button>
-            </>
-          ) : null}
 
-          <div style={{ marginLeft: "auto", opacity: 0.85, fontSize: 12 }}>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/risk")}
+                disabled={!hasData}
+              >
+                Risk
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              flex: "0 0 auto",
+              marginLeft: "auto",
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <MiniStat label="Plan" value={isPro ? "PRO" : "FREE"} />
+            <MiniStat label="Session" value={hasData ? "Loaded" : "None"} />
             {hasData ? (
               <>
-                Loaded: <b>{data?.uploadedFileName}</b> · Rows: <b>{data?.rowsParsed}</b> · Positions:{" "}
-                <b>{data?.positions?.length ?? 0}</b>
+                <MiniStat label="Rows" value={sessionSummary?.rows ?? 0} />
+                <MiniStat
+                  label="Positions"
+                  value={sessionSummary?.positions ?? 0}
+                />
               </>
-            ) : (
-              <>No session loaded</>
-            )}
+            ) : null}
           </div>
         </div>
+
+        {hasData ? (
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <div className="p-muted" style={{ fontSize: 12 }}>
+              Loaded file:{" "}
+              <b style={{ color: "var(--text)" }}>{sessionSummary?.file}</b>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/upload")}
+              >
+                Re-upload
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+            }}
+            className="p-muted"
+          >
+            No session yet. Upload a CSV to unlock Overview / Performance /
+            Risk.
+          </div>
+        )}
       </div>
 
-      {/* STEPS */}
+      {/* QUICK START STEPS */}
       <div style={{ display: "grid", gap: 12 }}>
-        {/* STEP 1: BITGET CSV GUIDE */}
+        {/* STEP 1: WHAT THIS IS + HOW TO USE */}
         <StepCard
           step={1}
-          title="Get your CSV from Bitget"
+          title="How Tradevion works (the 60-second flow)"
           done={false}
           desc={
             <div>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Bitget export (quick guide)</div>
-
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 <Bullet>
-                  Open Bitget (web) → go to <CodePath>Assets</CodePath> / <CodePath>Orders</CodePath> (depends on
-                  interface)
+                  <b>Upload</b> your trade history CSV (executed fills / trade
+                  history).
                 </Bullet>
                 <Bullet>
-                  For Futures/Perp trading, you usually want:{" "}
-                  <CodePath>Futures → Order History</CodePath> and/or <CodePath>Futures → Trade History</CodePath>
+                  Go to <b>Overview</b> to confirm everything looks correct
+                  (PnL, equity curve, basic stats).
                 </Bullet>
                 <Bullet>
-                  Look for an <CodePath>Export</CodePath> button (top-right area) and export as <CodePath>CSV</CodePath>
+                  Use <b>Performance</b> to find what makes / loses money
+                  (symbols, distributions, time patterns).
                 </Bullet>
                 <Bullet>
-                  Select a date range (e.g. last 30/90 days) → export/download
+                  Use <b>Risk</b> to control drawdowns (risk consistency, streak
+                  behavior, risk limits).
                 </Bullet>
               </ul>
-
-              <div style={{ marginTop: 10, fontWeight: 900 }}>What to export for THIS app</div>
-              <div className="p-muted" style={{ marginTop: 6 }}>
-                Use the file that contains executed trade events (fills). In Bitget this is most often called{" "}
-                <b>Trade History</b> or <b>Fills</b>. If you only export <b>Order History</b>, you may miss partial fills.
-              </div>
-
-              <div style={{ marginTop: 10, fontWeight: 900 }}>Common issues</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                <Bullet>
-                  If your export contains commas and your system uses commas as decimals: try exporting with “English”
-                  locale (if Bitget offers it).
-                </Bullet>
-                <Bullet>
-                  Make sure the export includes timestamps. Without timestamps, Calendar/Performance will be incomplete.
-                </Bullet>
-                <Bullet>
-                  If Bitget splits exports per account (Spot/Futures), export the one you trade with (usually Futures).
-                </Bullet>
-              </ul>
-
-              <div style={{ marginTop: 10 }}>
-                <button className="btn-secondary" onClick={() => router.push("/upload")}>
-                  I have the CSV → Go to Upload
-                </button>
+              <div className="p-muted" style={{ marginTop: 10 }}>
+                Tradevion is not a “journal for notes”. It’s a{" "}
+                <b>risk control layer</b> on top of your trading history.
               </div>
             </div>
           }
+          actions={
+            <button
+              className="btn-primary"
+              onClick={() => router.push(hasData ? "/overview" : "/upload")}
+            >
+              {hasData ? "Open Overview" : "Go to Upload"}
+            </button>
+          }
         />
 
-        {/* STEP 2: UPLOAD */}
+        {/* STEP 2: CSV EXPORT GUIDE (keep short + correct) */}
         <StepCard
           step={2}
+          title="Get the right CSV (important)"
+          done={false}
+          desc={
+            <div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                What you need
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <Bullet>
+                  Export <b>executed trades</b> (often called{" "}
+                  <b>Trade History</b> / <b>Fills</b>).
+                </Bullet>
+                <Bullet>
+                  Make sure the file includes <b>timestamps</b> (otherwise
+                  calendar/time analysis will be incomplete).
+                </Bullet>
+                <Bullet>
+                  If your exchange offers multiple exports, prefer the one with{" "}
+                  <b>fills</b> (not just orders).
+                </Bullet>
+              </ul>
+
+              <div style={{ marginTop: 10, fontWeight: 900 }}>
+                Bitget quick hint (optional)
+              </div>
+              <div className="p-muted" style={{ marginTop: 6 }}>
+                In Bitget (web), you typically find exports under{" "}
+                <CodePath>Orders</CodePath> / <CodePath>Assets</CodePath>. For
+                Futures/Perp, export{" "}
+                <CodePath>Futures → Trade History</CodePath> if available.
+              </div>
+
+              <div style={{ marginTop: 10, fontWeight: 900 }}>
+                Common issues
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <Bullet>
+                  Decimal/comma issues: export with an “English” locale if
+                  available.
+                </Bullet>
+                <Bullet>
+                  If Bitget splits Spot/Futures, export the account you actually
+                  trade (often Futures).
+                </Bullet>
+              </ul>
+            </div>
+          }
+          actions={
+            <button
+              className="btn-secondary"
+              onClick={() => router.push("/upload")}
+            >
+              I have the CSV → Upload
+            </button>
+          }
+        />
+
+        {/* STEP 3: UPLOAD */}
+        <StepCard
+          step={3}
           title="Upload CSV"
           desc={
             <>
-              Upload your exported Bitget CSV. After upload we automatically compute positions, daily PnL, symbol stats,
-              and all dashboards.
+              Upload your trade history CSV. Tradevion will compute positions,
+              daily PnL, symbol stats and build your dashboards automatically.
             </>
           }
           done={hasData}
           actions={
-            <button className="btn-primary" onClick={() => router.push("/upload")}>
+            <button
+              className="btn-primary"
+              onClick={() => router.push("/upload")}
+            >
               Go to Upload
             </button>
           }
         />
 
-        {/* STEP 3: DASHBOARD */}
+        {/* STEP 4: OVERVIEW */}
         <StepCard
-          step={3}
-          title="Check Dashboard"
+          step={4}
+          title="Overview (sanity-check your data)"
           desc={
             <>
-              See your Total PnL, Win Rate, Profit Factor, Equity Curve, and Biggest Win/Loss at a glance.
+              Your first stop after upload. Confirm PnL, equity curve, trade
+              count, and whether the import looks correct.
             </>
           }
           done={hasData && hasByDay}
           actions={
-            <button className="btn-secondary" onClick={() => router.push("/dashboard")} disabled={!hasData}>
-              Open Dashboard
+            <button
+              className="btn-secondary"
+              onClick={() => router.push("/overview")}
+              disabled={!hasData}
+            >
+              Open Overview
             </button>
           }
         />
 
-
-        {/* STEP 5: POSITIONS */}
+        {/* STEP 5: PERFORMANCE */}
         <StepCard
           step={5}
-          title="Drill Down: Positions"
+          title="Performance (find what drives results)"
           desc={
             <>
-              Filter by symbol/day. Review hold time, trades per position, and net PnL per position.
-            </>
-          }
-          done={hasData && hasPositions}
-          actions={
-            <button className="btn-secondary" onClick={() => router.push("/positions")} disabled={!hasData}>
-              Open Positions
-            </button>
-          }
-        />
-
-        {/* STEP 6: PERFORMANCE */}
-        <StepCard
-          step={6}
-          title="Deep Dive: Performance"
-          desc={
-            <>
-              Ticker analytics, risk analytics, distribution, and monthly/daily equity curves — perfect to spot weaknesses.
+              Identify which symbols/time windows/distributions create your wins
+              and losses. Use this to remove weak spots.
             </>
           }
           done={hasData}
           actions={
-            <button className="btn-secondary" onClick={() => router.push("/performance")} disabled={!hasData}>
+            <button
+              className="btn-secondary"
+              onClick={() => router.push("/performance")}
+              disabled={!hasData}
+            >
               Open Performance
             </button>
           }
         />
 
-                {/* STEP 4: CALENDAR */}
-                <StepCard
-          step={4}
-          title="Use Calendar (Daily Heatmap)"
+        {/* STEP 6: RISK */}
+        <StepCard
+          step={6}
+          title="Risk (control drawdowns)"
           desc={
             <>
-              Find your best/worst days. Click a day to open positions for that date.
+              The risk layer turns “analytics” into “control”: consistency,
+              streak behavior, overtrading patterns, and risk guardrails.
             </>
           }
-          done={hasData && hasByDay}
+          done={hasData}
           actions={
-            <button className="btn-secondary" onClick={() => router.push("/calendar")} disabled={!hasData}>
-              Open Calendar
+            <button
+              className="btn-secondary"
+              onClick={() => router.push("/risk")}
+              disabled={!hasData}
+            >
+              Open Risk
             </button>
+          }
+        />
+
+        {/* Optional: journal drilldown kept, but not a main CTA */}
+        <StepCard
+          step={7}
+          title="Journal (drill down into positions / trades / calendar)"
+          desc={
+            <>
+              Use Journal to inspect details: individual trades, positions, and
+              daily heatmaps. This is where you verify specific events behind
+              your stats.
+            </>
+          }
+          done={hasData && (hasPositions || hasByDay)}
+          actions={
+            <>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/positions")}
+                disabled={!hasData}
+              >
+                Positions
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/trades")}
+                disabled={!hasData}
+              >
+                Trades
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => router.push("/calendar")}
+                disabled={!hasData}
+              >
+                Calendar
+              </button>
+            </>
           }
         />
 
         {/* PRO */}
         <div className="card" style={{ padding: 16, borderRadius: 14 }}>
-          <div style={{ fontWeight: 900 }}>PRO (optional)</div>
+          <div style={{ fontWeight: 1000 }}>PRO (optional)</div>
           <div className="p-muted" style={{ marginTop: 6 }}>
-            Export, higher limits, more analytics. Current plan: {isPro ? "✅ PRO active" : "🔒 FREE"}
+            More analytics, higher limits, and premium risk features. Current
+            plan: {isPro ? "✅ PRO active" : "🔒 FREE"}
           </div>
           {!isPro ? (
             <div style={{ marginTop: 12 }}>
-              <button className="btn-primary" onClick={() => router.push("/pricing")}>
-                Unlock PRO
+              <button
+                className="btn-primary"
+                onClick={() => router.push("/pricing")}
+              >
+                See PRO
               </button>
             </div>
           ) : null}
         </div>
       </div>
 
-      <div className="p-muted" style={{ marginTop: 16, fontSize: 12, opacity: 0.85 }}>
-        Tip: If your Bitget export is missing fields, export “Trade History / Fills” instead of “Order History”.
+      <div
+        className="p-muted"
+        style={{ marginTop: 16, fontSize: 12, opacity: 0.85 }}
+      >
+        Tip: If your export is missing fields, export{" "}
+        <b>Trade History / Fills</b> instead of <b>Order History</b>.
       </div>
     </main>
   );
