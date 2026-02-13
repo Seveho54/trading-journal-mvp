@@ -19,6 +19,18 @@ function safeDateKey(x: any) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function mean(arr: number[]) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function std(arr: number[]) {
+  if (arr.length < 2) return 0;
+  const m = mean(arr);
+  const v = arr.reduce((a, b) => a + (b - m) ** 2, 0) / (arr.length - 1);
+  return Math.sqrt(v);
+}
+
 function computeMaxDrawdown(equity: number[]) {
   let peak = -Infinity;
   let maxDD = 0; // negative number
@@ -62,12 +74,26 @@ export function computeRiskSummary(
       .map((d) => {
         const t = safeDateKey(d.day ?? d.date ?? d.t ?? d.ts ?? d.time);
         // try common fields
-        const pnl =
-          num(d.netPnl, NaN) ??
-          num(d.pnl, NaN) ??
-          num(d.totalPnl, NaN) ??
-          num(d.sumPnl, NaN);
-        return { t, pnl: Number.isFinite(pnl) ? pnl : 0 };
+        // try common fields (Bitget byDayPositions uses totalNetProfit / totalRealizedPnl)
+        const candidates = [
+          d.totalNetProfit,
+          d.totalRealizedPnl,
+          d.netPnl,
+          d.pnl,
+          d.totalPnl,
+          d.sumPnl,
+        ];
+
+        let pnl = 0;
+        for (const c of candidates) {
+          const v = num(c, NaN);
+          if (Number.isFinite(v)) {
+            pnl = v;
+            break;
+          }
+        }
+
+        return { t, pnl };
       })
       .filter((x) => !!x.t)
       .sort((a, b) => String(a.t).localeCompare(String(b.t)));
@@ -90,8 +116,24 @@ export function computeRiskSummary(
           p.ts ??
           null;
         const key = safeDateKey(t);
-        const pnl = num(p.netPnl ?? p.pnl ?? p.profit ?? p.realizedPnl ?? 0, 0);
-        return { t: key, pnl };
+        const pnlCandidates = [
+          d.netPnl,
+          d.pnl,
+          d.totalPnl,
+          d.sumPnl,
+          d.totalNetProfit,
+          d.totalRealizedPnl,
+        ];
+
+        let pnl = 0;
+        for (const c of pnlCandidates) {
+          const n = num(c, NaN);
+          if (Number.isFinite(n)) {
+            pnl = n;
+            break;
+          }
+        }
+        return { t, pnl };
       })
       .filter((x) => !!x.t)
       .sort((a, b) => String(a.t).localeCompare(String(b.t)));
@@ -189,6 +231,256 @@ export function computeRiskSummary(
 
   stabilityScore = Math.max(0, Math.round(stabilityScore));
 
+  // -------------------------
+  // 5) Trades per day (Overtrading proxy)
+  // -------------------------
+  // Prefer byDay if available (most accurate)
+  let daysWithTrades = 0;
+  let totalTrades = 0;
+
+  if (byDay.length > 0) {
+    daysWithTrades = byDay.length;
+    totalTrades = byDay.reduce(
+      (a, d) => a + num(d.trades ?? d.positions ?? 0, 0),
+      0,
+    );
+  } else {
+    // fallback: infer by day from positions close time
+    const dayMap = new Map<string, number>();
+    for (const p of positions) {
+      const t =
+        p.closeTime ??
+        p.closeTimestamp ??
+        p.closedAt ??
+        p.exitTime ??
+        p.time ??
+        p.ts ??
+        null;
+      const k = safeDateKey(t);
+      if (!k) continue;
+      dayMap.set(k, (dayMap.get(k) ?? 0) + 1);
+    }
+    daysWithTrades = dayMap.size;
+    totalTrades = Array.from(dayMap.values()).reduce((a, b) => a + b, 0);
+  }
+
+  const tradesPerDayAvg = daysWithTrades > 0 ? totalTrades / daysWithTrades : 0;
+
+  // -------------------------
+  // 6) Risk inconsistency proxy (CV of abs pnl)
+  // -------------------------
+  const absPnL = pnlSeries
+    .map((x) => Math.abs(x))
+    .filter((x) => Number.isFinite(x) && x > 0);
+  const absMean = mean(absPnL);
+  const absStd = std(absPnL);
+  const riskInconsistencyCV = absMean > 0 ? absStd / absMean : 0;
+
+  // -------------------------
+  // 7) Tradevion Risk Score v1 (rule-based)
+  // -------------------------
+  const breakdown: {
+    key: string;
+    label: string;
+    penalty: number;
+    value: string;
+  }[] = [];
+  let riskScore = 100;
+
+  // A) Drawdown penalty
+  const ddPct = maxDDPct ?? null;
+  let ddPenalty = 0;
+  if (ddPct != null) {
+    if (ddPct > 0.3) ddPenalty = 30;
+    else if (ddPct > 0.2) ddPenalty = 20;
+    else if (ddPct > 0.1) ddPenalty = 10;
+  }
+  if (ddPenalty > 0) {
+    riskScore -= ddPenalty;
+    breakdown.push({
+      key: "drawdown",
+      label: "Drawdown",
+      penalty: ddPenalty,
+      value: `${(ddPct! * 100).toFixed(1)}%`,
+    });
+  }
+
+  // B) Loss streak penalty
+  let streakPenalty = 0;
+  if (maxLossStreak >= 9) streakPenalty = 25;
+  else if (maxLossStreak >= 6) streakPenalty = 15;
+  else if (maxLossStreak >= 4) streakPenalty = 10;
+
+  if (streakPenalty > 0) {
+    riskScore -= streakPenalty;
+    breakdown.push({
+      key: "lossStreak",
+      label: "Loss streak",
+      penalty: streakPenalty,
+      value: String(maxLossStreak),
+    });
+  }
+
+  // C) Risk inconsistency penalty (CV)
+  let incPenalty = 0;
+  if (riskInconsistencyCV > 1.2) incPenalty = 20;
+  else if (riskInconsistencyCV > 0.8) incPenalty = 10;
+
+  if (incPenalty > 0) {
+    riskScore -= incPenalty;
+    breakdown.push({
+      key: "riskInconsistency",
+      label: "Risk inconsistency",
+      penalty: incPenalty,
+      value: `CV ${riskInconsistencyCV.toFixed(2)}`,
+    });
+  }
+
+  // D) Overtrading penalty (trades/day)
+  let overPenalty = 0;
+  if (tradesPerDayAvg > 10) overPenalty = 20;
+  else if (tradesPerDayAvg > 5) overPenalty = 10;
+
+  if (overPenalty > 0) {
+    riskScore -= overPenalty;
+    breakdown.push({
+      key: "overtrading",
+      label: "Overtrading",
+      penalty: overPenalty,
+      value: `${tradesPerDayAvg.toFixed(1)}/day`,
+    });
+  }
+
+  riskScore = Math.max(0, Math.min(100, Math.round(riskScore)));
+
+  const riskBand =
+    riskScore >= 75 ? "stable" : riskScore >= 50 ? "risky" : "dangerous";
+
+  // -------------------------
+  // 5) Reasons + Actions (v1)
+  // -------------------------
+  const reasons: string[] = [];
+  const actions: string[] = [];
+
+  // Reason 1: Drawdown
+  if (maxDD < -100) reasons.push("Large max drawdown");
+  else if (maxDD < -50) reasons.push("Max drawdown is noticeable");
+  else reasons.push("Drawdown is under control");
+
+  // Reason 2: Loss streak
+  if (maxLossStreak >= 6) reasons.push("Long loss streaks");
+  else if (maxLossStreak >= 3)
+    reasons.push("Loss streaks are hurting consistency");
+  else reasons.push("Loss streaks are controlled");
+
+  // Reason 3: Win/Loss ratio
+  if (winLossRatio != null && winLossRatio < 1)
+    reasons.push("Average loss is bigger than average win");
+  else if (winLossRatio != null && winLossRatio < 1.5)
+    reasons.push("Win/Loss ratio can improve");
+  else reasons.push("Win/Loss ratio looks healthy");
+
+  // Actions (simple + concrete)
+  if (maxDD < -100)
+    actions.push("Cut risk per trade by 25% until drawdown recovers.");
+  else
+    actions.push(
+      "Set a max daily loss limit (e.g. 2R) and stop trading when hit.",
+    );
+
+  if (maxLossStreak >= 3)
+    actions.push(
+      "Add a hard stop: after 3 losing trades, take a break for the day.",
+    );
+  else
+    actions.push(
+      "Track your first 3 trades/day—avoid increasing size after losses.",
+    );
+
+  if (winLossRatio != null && winLossRatio < 1)
+    actions.push(
+      "Reduce average loss: tighten invalidation / respect stop-loss.",
+    );
+  else
+    actions.push("Keep risk constant—avoid scaling up on ‘feels good’ days.");
+
+  // Keep top 3 reasons/actions
+  const topReasons = reasons.slice(0, 3);
+  const topActions = actions.slice(0, 3);
+
+  function buildDrivers(params: {
+    maxDrawdown: number;
+    maxDrawdownPct: number | null;
+    currentDrawdown: number;
+    winLossRatio: number | null;
+    maxLossStreak: number;
+    winRate: number;
+  }) {
+    const drivers: {
+      label: string;
+      severity: "LOW" | "MED" | "HIGH";
+      detail: string;
+    }[] = [];
+
+    // 1) Drawdown
+    const ddAbs = Math.abs(params.maxDrawdown ?? 0);
+    const ddPct = params.maxDrawdownPct ?? null;
+
+    let ddSev: "LOW" | "MED" | "HIGH" = "LOW";
+    if (ddAbs >= 200 || (ddPct != null && ddPct >= 0.25)) ddSev = "HIGH";
+    else if (ddAbs >= 80 || (ddPct != null && ddPct >= 0.12)) ddSev = "MED";
+
+    drivers.push({
+      label: "Drawdown size",
+      severity: ddSev,
+      detail:
+        ddPct == null
+          ? `Max DD: ${params.maxDrawdown.toFixed(2)}`
+          : `Max DD: ${params.maxDrawdown.toFixed(2)} (~${(ddPct * 100).toFixed(1)}% of peak)`,
+    });
+
+    // 2) Loss streak
+    let lsSev: "LOW" | "MED" | "HIGH" = "LOW";
+    if ((params.maxLossStreak ?? 0) >= 6) lsSev = "HIGH";
+    else if ((params.maxLossStreak ?? 0) >= 3) lsSev = "MED";
+
+    drivers.push({
+      label: "Loss streak risk",
+      severity: lsSev,
+      detail: `Max loss streak: ${params.maxLossStreak} trades`,
+    });
+
+    // 3) Win/Loss ratio (avg win vs avg loss)
+    const wlr = params.winLossRatio;
+    let wlrSev: "LOW" | "MED" | "HIGH" = "LOW";
+    if (wlr != null) {
+      if (wlr < 0.8) wlrSev = "HIGH";
+      else if (wlr < 1.1) wlrSev = "MED";
+    }
+
+    drivers.push({
+      label: "Edge (avg win vs avg loss)",
+      severity: wlrSev,
+      detail:
+        wlr == null ? "Not enough data" : `Win/Loss ratio: ${wlr.toFixed(2)}`,
+    });
+
+    // Sort by severity, return top 3
+    const sevRank = { HIGH: 3, MED: 2, LOW: 1 } as const;
+    return drivers
+      .sort((a, b) => sevRank[b.severity] - sevRank[a.severity])
+      .slice(0, 3);
+  }
+
+  const drivers = buildDrivers({
+    maxDrawdown: maxDD,
+    maxDrawdownPct: maxDDPct,
+    currentDrawdown,
+    winLossRatio,
+    maxLossStreak,
+    winRate,
+  });
+
   return {
     equity: equityPoints,
     maxDrawdown: maxDD,
@@ -202,5 +494,16 @@ export function computeRiskSummary(
     currentLossStreak,
     totalPnl,
     stabilityScore,
+
+    tradesPerDayAvg,
+    riskInconsistencyCV,
+    riskScore,
+    riskBand,
+    breakdown,
+
+    reasons: topReasons,
+    actions: topActions,
+
+    drivers,
   };
 }
