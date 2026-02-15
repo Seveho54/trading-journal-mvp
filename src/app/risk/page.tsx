@@ -602,6 +602,8 @@ export default function RiskPage() {
   const periods = risk?.drawdownPeriods ?? [];
   const active = risk?.currentDrawdownPeriod ?? null;
   const last3 = periods.slice(-3).reverse(); // show newest first
+  const alerts = (risk as any)?.alerts ?? [];
+  const modeExplanation = (risk as any)?.modeExplanation ?? null;
 
   return (
     <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
@@ -836,6 +838,606 @@ export default function RiskPage() {
                 />
               </div>
             </div>
+
+            {/* Ebene 2: Alerts + Mode Explanation */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              {/* Alerts */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div
+                  className="card"
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Alerts</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    The biggest current risk signals
+                  </div>
+
+                  {alerts.length ? (
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {alerts.slice(0, 4).map((a: any) => (
+                        <div
+                          key={a.key}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                            display: "flex",
+                            alignItems: "flex-start",
+                            justifyContent: "space-between",
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 900, fontSize: 13 }}>
+                              {a.title}
+                            </div>
+                            <div
+                              className="p-muted"
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {a.detail}
+                            </div>
+                          </div>
+
+                          <span
+                            className="badge"
+                            style={{
+                              borderColor:
+                                a.severity === "CRITICAL"
+                                  ? "rgba(251,113,133,0.35)"
+                                  : a.severity === "WARN"
+                                    ? "rgba(250,204,21,0.35)"
+                                    : "rgba(96,165,250,0.30)",
+                              background:
+                                a.severity === "CRITICAL"
+                                  ? "rgba(251,113,133,0.12)"
+                                  : a.severity === "WARN"
+                                    ? "rgba(250,204,21,0.10)"
+                                    : "rgba(96,165,250,0.10)",
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {a.severity}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 12, fontSize: 12 }}
+                    >
+                      No alerts. You’re in a clean state.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Why this mode */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div
+                  className="card"
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Why this Mode</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Explanation of your current Risk Mode decision
+                  </div>
+
+                  {modeExplanation ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13 }}>
+                        {modeExplanation.title}
+                      </div>
+
+                      {modeExplanation.bullets?.length ? (
+                        <ul
+                          style={{
+                            marginTop: 10,
+                            paddingLeft: 18,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {modeExplanation.bullets
+                            .slice(0, 6)
+                            .map((b: string, i: number) => (
+                              <li
+                                key={i}
+                                className="p-muted"
+                                style={{ fontSize: 12 }}
+                              >
+                                {b}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <div
+                          className="p-muted"
+                          style={{ marginTop: 10, fontSize: 12 }}
+                        >
+                          —
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 12, fontSize: 12 }}
+                    >
+                      —
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Ebene 2.2 — Rules Now + Next Session Plan */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              {/* Best Move + Rules */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
+                  <div style={{ fontWeight: 1000 }}>Best Move</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Highest-impact fix based on your data
+                  </div>
+
+                  {(risk as any)?.bestMove ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {(risk as any).bestMove.title}
+                      </div>
+                      <div
+                        className="p-muted"
+                        style={{ marginTop: 6, fontSize: 12, lineHeight: 1.45 }}
+                      >
+                        {(risk as any).bestMove.detail}
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 12, fontSize: 12 }}
+                    >
+                      —
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      height: 1,
+                      background: "var(--border)",
+                      margin: "14px 0",
+                    }}
+                  />
+
+                  <div style={{ fontWeight: 1000 }}>Rules now</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {((risk as any)?.rulesNow ?? [])
+                      .slice(0, 4)
+                      .map((r: any) => (
+                        <div
+                          key={r.key}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, fontSize: 13 }}>
+                              {r.label}
+                            </div>
+                            <div style={{ fontWeight: 1000 }}>{r.value}</div>
+                          </div>
+                          <div
+                            className="p-muted"
+                            style={{
+                              marginTop: 6,
+                              fontSize: 12,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {r.why}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Session Plan */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
+                  <div style={{ fontWeight: 1000 }}>Next Session Plan</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    A concrete 3-step operating plan
+                  </div>
+
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {((risk as any)?.planNextSession ?? [])
+                      .slice(0, 3)
+                      .map((s: any, idx: number) => (
+                        <div
+                          key={s.key ?? idx}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 10,
+                            }}
+                          >
+                            <div
+                              className="badge"
+                              style={{ background: "rgba(255,255,255,0.05)" }}
+                            >
+                              Step {idx + 1}
+                            </div>
+                            <div style={{ fontWeight: 900 }}>{s.title}</div>
+                          </div>
+                          <div
+                            className="p-muted"
+                            style={{
+                              marginTop: 6,
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {s.detail}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Ebene 2.3 — Root Causes + Countermeasures */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              <div style={{ gridColumn: "span 5" }}>
+                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
+                  <div style={{ fontWeight: 1000 }}>Root causes (ranked)</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Why you are where you are — ranked by impact
+                  </div>
+
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {((risk as any)?.rootCauses ?? []).map((c: any) => (
+                      <div
+                        key={c.key}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.02)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ fontWeight: 900 }}>{c.title}</div>
+                          {sevPill(c.severity)}
+                        </div>
+                        <div
+                          className="p-muted"
+                          style={{
+                            marginTop: 6,
+                            fontSize: 12,
+                            lineHeight: 1.45,
+                          }}
+                        >
+                          <div>
+                            <b>Evidence:</b> {c.evidence}
+                          </div>
+                          <div style={{ marginTop: 4 }}>
+                            <b>Impact:</b> {c.impactHint}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "span 7" }}>
+                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
+                  <div style={{ fontWeight: 1000 }}>Countermeasures</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Concrete actions tailored to your causes
+                  </div>
+
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {((risk as any)?.countermeasures ?? [])
+                      .slice(0, 3)
+                      .map((m: any) => (
+                        <div
+                          key={m.key}
+                          style={{
+                            padding: "12px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div style={{ fontWeight: 900 }}>{m.title}</div>
+                          <ul
+                            style={{
+                              marginTop: 8,
+                              paddingLeft: 18,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {(m.steps ?? []).map((s: string, i: number) => (
+                              <li
+                                key={i}
+                                className="p-muted"
+                                style={{ fontSize: 12 }}
+                              >
+                                {s}
+                              </li>
+                            ))}
+                          </ul>
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 8, fontSize: 12 }}
+                          >
+                            <b>Watch:</b> {m.metricToWatch}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Ebene 2.4 — Trading Policy (OS) */}
+            {risk?.policy ? (
+              <div
+                className="card"
+                style={{ padding: 16, borderRadius: 16, marginBottom: 12 }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Today’s Trading Policy</div>
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    Mode: <b>{risk.policy.mode}</b> · Allowed:{" "}
+                    <b>{risk.policy.allowed}</b>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ gridColumn: "span 3" }}>
+                    <StatCard
+                      title="Max Trades Today"
+                      value={<span>{risk.policy.maxTradesToday}</span>}
+                    />
+                  </div>
+                  <div style={{ gridColumn: "span 3" }}>
+                    <StatCard
+                      title="Max Daily Loss"
+                      value={
+                        <span className={pnlClass(risk.policy.maxDailyLoss)}>
+                          {fmtMoney(risk.policy.maxDailyLoss)}
+                        </span>
+                      }
+                      sub="Hard stop"
+                    />
+                  </div>
+                  <div style={{ gridColumn: "span 3" }}>
+                    <StatCard
+                      title="Size Multiplier"
+                      value={
+                        <span>
+                          {Math.round(risk.policy.sizeMultiplier * 100)}%
+                        </span>
+                      }
+                      sub="relative to normal"
+                    />
+                  </div>
+                  <div style={{ gridColumn: "span 3" }}>
+                    <StatCard
+                      title="Cooldown"
+                      value={<span>{risk.policy.cooldownMinutes}m</span>}
+                      sub={`after ${risk.policy.cooldownAfterLosses} losses`}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className="p-muted"
+                  style={{ marginTop: 10, fontSize: 12 }}
+                >
+                  <b>Focus:</b>
+                  <ul
+                    style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}
+                  >
+                    {(risk.policy.focus ?? []).map((x: string, i: number) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Ebene 2.5 — Next Session Checklist */}
+            {risk?.checklist ? (
+              <div
+                className="card"
+                style={{ padding: 16, borderRadius: 16, marginBottom: 12 }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Next Session Checklist</div>
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    {risk.checklist.headline}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ gridColumn: "span 4" }}>
+                    <div
+                      style={{ fontWeight: 900, fontSize: 12, opacity: 0.9 }}
+                    >
+                      DO
+                    </div>
+                    <ul
+                      className="p-muted"
+                      style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.6 }}
+                    >
+                      {risk.checklist.do.map((x: string, i: number) => (
+                        <li key={i}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div style={{ gridColumn: "span 4" }}>
+                    <div
+                      style={{ fontWeight: 900, fontSize: 12, opacity: 0.9 }}
+                    >
+                      DON’T
+                    </div>
+                    <ul
+                      className="p-muted"
+                      style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.6 }}
+                    >
+                      {risk.checklist.dont.map((x: string, i: number) => (
+                        <li key={i}>{x}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div style={{ gridColumn: "span 4" }}>
+                    <div
+                      style={{ fontWeight: 900, fontSize: 12, opacity: 0.9 }}
+                    >
+                      IF / THEN
+                    </div>
+                    <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                      {risk.checklist.ifThen.map((r: any, i: number) => (
+                        <div
+                          key={i}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div
+                            className="p-muted"
+                            style={{ fontSize: 12, lineHeight: 1.5 }}
+                          >
+                            <b>IF</b> {r.if}
+                            <br />
+                            <b>THEN</b> {r.then}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Charts directly under KPIs (same charts, better placement) */}
             <div

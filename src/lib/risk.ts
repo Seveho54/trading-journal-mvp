@@ -246,6 +246,59 @@ export type RiskAlert = {
   detail: string;
 };
 
+export type RiskRuleNow = {
+  key: string;
+  label: string;
+  value: string;
+  why: string;
+};
+
+export type NextSessionStep = {
+  key: string;
+  title: string;
+  detail: string;
+};
+
+export type RootCause = {
+  key: string;
+  severity: "LOW" | "MED" | "HIGH";
+  title: string;
+  evidence: string;
+  impactHint: string;
+};
+
+export type Countermeasure = {
+  key: string;
+  title: string;
+  steps: string[];
+  metricToWatch: string;
+};
+
+export type TradingPolicy = {
+  mode: "NORMAL" | "CAUTION" | "RECOVERY" | "CRITICAL";
+  allowed: "YES" | "LIMITED" | "NO";
+
+  maxTradesToday: number;
+  maxDailyLoss: number; // negative number
+  sizeMultiplier: number; // 1 = normal, 0.5 = half size, etc.
+  cooldownAfterLosses: number; // number of consecutive losses that triggers cooldown
+  cooldownMinutes: number;
+
+  focus: string[]; // short bullet list
+};
+
+export type NextSessionChecklist = {
+  headline: string; // e.g. "Recovery session"
+  do: string[]; // concrete actions
+  dont: string[]; // concrete avoidances
+  ifThen: { if: string; then: string }[]; // rules
+};
+
+export type ModeExplanation = {
+  title: string;
+  bullets: string[];
+};
+
 export function computeRiskSummary(
   input: { positions: AnyObj[]; trades: AnyObj[]; byDayPositions?: AnyObj[] },
   opts?: { startEquity?: number },
@@ -709,6 +762,512 @@ export function computeRiskSummary(
     winRate,
   });
 
+  // -------------------------
+  // 10) Alerts + Mode explanation (Ebene 2)
+  // -------------------------
+  const alerts: RiskAlert[] = [];
+
+  const ddPctNow = currentDrawdownPct ?? 0;
+
+  // Drawdown alert (current)
+  if (ddPctNow >= 0.2) {
+    alerts.push({
+      key: "dd_critical",
+      severity: "CRITICAL",
+      title: "Drawdown is critical",
+      detail: `Current drawdown is ~${(ddPctNow * 100).toFixed(1)}% from peak.`,
+    });
+  } else if (ddPctNow >= 0.1) {
+    alerts.push({
+      key: "dd_warn",
+      severity: "WARN",
+      title: "You are in drawdown",
+      detail: `Current drawdown is ~${(ddPctNow * 100).toFixed(1)}% from peak.`,
+    });
+  }
+
+  // Trade loss streak
+  if (maxLossStreak >= 9) {
+    alerts.push({
+      key: "lossstreak_critical",
+      severity: "CRITICAL",
+      title: "Extreme loss streak",
+      detail: `Max losing trades in a row: ${maxLossStreak}.`,
+    });
+  } else if (maxLossStreak >= 6) {
+    alerts.push({
+      key: "lossstreak_warn",
+      severity: "WARN",
+      title: "Loss streak risk",
+      detail: `Max losing trades in a row: ${maxLossStreak}.`,
+    });
+  }
+
+  // Losing days streak
+  if (lossDaysStreak >= 4) {
+    alerts.push({
+      key: "lossdays_warn",
+      severity: "WARN",
+      title: "Multiple losing days in a row",
+      detail: `Current losing-days streak: ${lossDaysStreak}.`,
+    });
+  }
+
+  // Overtrading
+  if (tradesPerDayAvg > 10) {
+    alerts.push({
+      key: "overtrade_warn",
+      severity: "WARN",
+      title: "High trading frequency",
+      detail: `Avg trades/day: ${tradesPerDayAvg.toFixed(1)}.`,
+    });
+  }
+
+  // Risk inconsistency
+  if (riskInconsistencyCV > 1.2) {
+    alerts.push({
+      key: "inconsistency_warn",
+      severity: "WARN",
+      title: "Risk inconsistency is high",
+      detail: `PnL variability (CV): ${riskInconsistencyCV.toFixed(2)}.`,
+    });
+  }
+
+  // Worst day (useful for daily loss rules)
+  if (maxDailyLoss < -100) {
+    alerts.push({
+      key: "daily_loss_info",
+      severity: "INFO",
+      title: "Daily loss spikes exist",
+      detail: `Worst day: ${maxDailyLoss.toFixed(2)}.`,
+    });
+  }
+
+  // Sort by severity
+  const sevRankAlerts = { CRITICAL: 3, WARN: 2, INFO: 1 } as const;
+  alerts.sort((a, b) => sevRankAlerts[b.severity] - sevRankAlerts[a.severity]);
+
+  const modeExplanation: ModeExplanation = {
+    title:
+      riskMode === "CRITICAL"
+        ? "CRITICAL: trading should stop"
+        : riskMode === "RECOVERY"
+          ? "RECOVERY: trade only with limits"
+          : riskMode === "CAUTION"
+            ? "CAUTION: tighten rules"
+            : "NORMAL: keep standard rules",
+    bullets: [],
+  };
+
+  if (ddPctNow >= 0.2)
+    modeExplanation.bullets.push(
+      `Drawdown ≥ 20% (${(ddPctNow * 100).toFixed(1)}%).`,
+    );
+  else if (ddPctNow >= 0.1)
+    modeExplanation.bullets.push(
+      `Drawdown ≥ 10% (${(ddPctNow * 100).toFixed(1)}%).`,
+    );
+
+  if (maxLossStreak >= 6)
+    modeExplanation.bullets.push(`Loss streak risk (max ${maxLossStreak}).`);
+
+  if (lossDaysStreak >= 3)
+    modeExplanation.bullets.push(`Losing days streak (${lossDaysStreak}).`);
+
+  if (riskInconsistencyCV > 1.0)
+    modeExplanation.bullets.push(
+      `PnL inconsistency (CV ${riskInconsistencyCV.toFixed(2)}).`,
+    );
+
+  if (tradesPerDayAvg > 8)
+    modeExplanation.bullets.push(
+      `High trade frequency (${tradesPerDayAvg.toFixed(1)}/day).`,
+    );
+
+  if (!modeExplanation.bullets.length)
+    modeExplanation.bullets.push("No major risk triggers detected.");
+
+  // -------------------------
+  // Ebene 2.2 — Rules Now + Next Session Plan (personalized)
+  // -------------------------
+  const rulesNow: RiskRuleNow[] = [];
+
+  // Rule 1: daily stop (based on worst day)
+  // If worst day is -120, recommend stop at ~70-80% of that (safer)
+  const stopDaily =
+    maxDailyLoss < 0
+      ? Math.round(Math.abs(maxDailyLoss) * 0.75 * 100) / 100
+      : null;
+  if (stopDaily != null) {
+    rulesNow.push({
+      key: "dailyStop",
+      label: "Max Daily Loss (stop trading)",
+      value: `-${stopDaily.toFixed(2)}`,
+      why: `Based on your worst day (${maxDailyLoss.toFixed(2)}). Stopping earlier prevents spiral losses.`,
+    });
+  }
+
+  // Rule 2: losing streak stop (based on your real streak behavior)
+  const streakStop = Math.max(
+    2,
+    Math.min(4, Math.ceil((maxLossStreak || 0) / 2)),
+  );
+  rulesNow.push({
+    key: "streakStop",
+    label: "Loss-streak stop (cooldown)",
+    value: `${streakStop} losses`,
+    why: `Your max streak is ${maxLossStreak}. A stop at ${streakStop} breaks escalation.`,
+  });
+
+  // Rule 3: mode-based sizing cap (simple but powerful)
+  const sizeCap =
+    riskMode === "CRITICAL"
+      ? "0% (no trading)"
+      : riskMode === "RECOVERY"
+        ? "50% size"
+        : riskMode === "CAUTION"
+          ? "75% size"
+          : "100% size";
+
+  rulesNow.push({
+    key: "sizeCap",
+    label: "Position size cap",
+    value: sizeCap,
+    why: `Mode = ${riskMode}. Size control is the fastest stabilizer.`,
+  });
+
+  // Best Move: choose 1 highest impact next action
+  let bestMove = {
+    title: "Stabilize with a daily stop rule",
+    detail:
+      stopDaily != null
+        ? `Hard stop at -${stopDaily.toFixed(2)} per day. Prevents deep drawdowns.`
+        : `Add a hard daily stop to prevent drawdown spirals.`,
+  };
+
+  if ((maxLossStreak ?? 0) >= 6) {
+    bestMove = {
+      title: "Stop the streak spiral",
+      detail: `After ${streakStop} consecutive losses: stop for the day. Your max streak is ${maxLossStreak}.`,
+    };
+  } else if ((winLossRatio ?? 999) < 1) {
+    bestMove = {
+      title: "Fix your loss size first",
+      detail: `Your avg loss is larger than avg win. Tighten invalidation / respect stop-loss. No size increase until ratio > 1.`,
+    };
+  }
+
+  // Next Session Plan: 3-step operational plan
+  const planNextSession: NextSessionStep[] = [
+    {
+      key: "plan-1",
+      title: "Pre-trade: define stop conditions",
+      detail:
+        stopDaily != null
+          ? `If PnL hits -${stopDaily.toFixed(2)} (daily), stop trading immediately.`
+          : "Set a hard max daily loss and stop when hit.",
+    },
+    {
+      key: "plan-2",
+      title: "During trading: keep size capped",
+      detail: `Trade at ${sizeCap}. No “revenge size-ups” after losses.`,
+    },
+    {
+      key: "plan-3",
+      title: "Recovery goal: break-even target",
+      detail:
+        distanceToBreakeven > 0
+          ? `You need +${distanceToBreakeven.toFixed(2)} to break even. Focus on A+ setups only until recovered.`
+          : "You are at/above peak. Keep rules stable to protect gains.",
+    },
+  ];
+
+  // -------------------------
+  // Ebene 2.3 — Root Cause Finder (ranked) + Countermeasures
+  // -------------------------
+  const rootCauses: RootCause[] = [];
+
+  // Helpers
+  const sevRank = { HIGH: 3, MED: 2, LOW: 1 } as const;
+
+  // Cause A: Drawdown pressure (current)
+  const ddNowAbs = Math.abs(currentDrawdown ?? 0);
+  const ddNowPct = currentDrawdownPct ?? null;
+
+  let ddSev: "LOW" | "MED" | "HIGH" = "LOW";
+  if (ddNowAbs >= 200 || (ddNowPct != null && ddNowPct >= 0.15)) ddSev = "HIGH";
+  else if (ddNowAbs >= 80 || (ddNowPct != null && ddNowPct >= 0.07))
+    ddSev = "MED";
+
+  if (ddNowAbs > 0) {
+    rootCauses.push({
+      key: "ddPressure",
+      severity: ddSev,
+      title: "Drawdown pressure is high",
+      evidence:
+        ddNowPct != null
+          ? `Current drawdown: -${ddNowAbs.toFixed(2)} (~${(ddNowPct * 100).toFixed(1)}%).`
+          : `Current drawdown: -${ddNowAbs.toFixed(2)}.`,
+      impactHint:
+        distanceToBreakeven > 0
+          ? `You need +${distanceToBreakeven.toFixed(2)} to reach break-even — protect capital first.`
+          : "Capital is near peak — maintain rules to protect gains.",
+    });
+  }
+
+  // Cause B: Loss-streak escalation
+  let streakSev: "LOW" | "MED" | "HIGH" = "LOW";
+  if ((maxLossStreak ?? 0) >= 6) streakSev = "HIGH";
+  else if ((maxLossStreak ?? 0) >= 3) streakSev = "MED";
+
+  if ((maxLossStreak ?? 0) >= 3) {
+    rootCauses.push({
+      key: "streak",
+      severity: streakSev,
+      title: "Loss streak escalation risk",
+      evidence: `Max loss streak: ${maxLossStreak} • Current: ${currentLossStreak}.`,
+      impactHint:
+        "Streaks are where traders break rules and oversize — stop the spiral early.",
+    });
+  }
+
+  // Cause C: Inconsistency / size variance proxy
+  let incSev: "LOW" | "MED" | "HIGH" = "LOW";
+  if (riskInconsistencyCV >= 1.2) incSev = "HIGH";
+  else if (riskInconsistencyCV >= 0.8) incSev = "MED";
+
+  if (riskInconsistencyCV >= 0.8) {
+    rootCauses.push({
+      key: "inconsistency",
+      severity: incSev,
+      title: "PnL size variance is too high",
+      evidence: `Risk inconsistency CV: ${riskInconsistencyCV.toFixed(2)} (higher = unstable sizing/outliers).`,
+      impactHint:
+        "Outlier losses usually cause the big DD. Your priority is reducing tail risk.",
+    });
+  }
+
+  // Cause D: Overtrading
+  let overSev: "LOW" | "MED" | "HIGH" = "LOW";
+  if (tradesPerDayAvg > 10) overSev = "HIGH";
+  else if (tradesPerDayAvg > 5) overSev = "MED";
+
+  if (tradesPerDayAvg > 5) {
+    rootCauses.push({
+      key: "overtrading",
+      severity: overSev,
+      title: "Overtrading increases error rate",
+      evidence: `Avg trades/day: ${tradesPerDayAvg.toFixed(1)}.`,
+      impactHint:
+        "Most traders lose money in the extra trades after the first 2–4 setups.",
+    });
+  }
+
+  // Rank causes (top 3)
+  const rankedRootCauses = rootCauses
+    .sort((a, b) => sevRank[b.severity] - sevRank[a.severity])
+    .slice(0, 3);
+
+  // Countermeasures (mapped to causes)
+  const countermeasures: Countermeasure[] = [];
+
+  for (const c of rankedRootCauses) {
+    if (c.key === "ddPressure") {
+      const stopDailyStr =
+        stopDaily != null ? `-${stopDaily.toFixed(2)}` : "a hard daily stop";
+      countermeasures.push({
+        key: "cm-dd",
+        title: "DD Recovery Protocol (7 days)",
+        steps: [
+          `Set max daily loss to ${stopDailyStr} and STOP immediately when hit.`,
+          `Trade only A+ setups: max 2–3 trades/day until break-even is recovered.`,
+          `No size increases until equity is back above last peak.`,
+        ],
+        metricToWatch: "Current drawdown + distance to break-even",
+      });
+    }
+
+    if (c.key === "streak") {
+      countermeasures.push({
+        key: "cm-streak",
+        title: "Streak Breaker Rule",
+        steps: [
+          `After ${streakStop} consecutive losses: stop trading for the day.`,
+          "After the stop: review last 3 trades → identify 1 repeated mistake (setup, entry, SL).",
+          "Next day: first trade must be half-size (warm start).",
+        ],
+        metricToWatch: "Max loss streak + current streak",
+      });
+    }
+
+    if (c.key === "inconsistency") {
+      countermeasures.push({
+        key: "cm-inc",
+        title: "Tail-risk reduction (stop the outliers)",
+        steps: [
+          "Fix 1 thing: never move stop-loss further away after entry.",
+          "Cap single-trade loss: if a trade hits -1R, you are done with that setup (no re-entry).",
+          "Keep size constant for 20 trades (no exceptions).",
+        ],
+        metricToWatch: "Risk inconsistency CV (aim < 0.8)",
+      });
+    }
+
+    if (c.key === "overtrading") {
+      const cap = tradesPerDayAvg > 10 ? 5 : 3;
+      countermeasures.push({
+        key: "cm-over",
+        title: "Overtrading cap (quality filter)",
+        steps: [
+          `Hard cap: max ${cap} trades/day.`,
+          "After 2 trades, require a 5-min reset checklist before entering again.",
+          "If you are down on the day: reduce remaining trades to 1 only.",
+        ],
+        metricToWatch: "Trades/day average + daily PnL streak",
+      });
+    }
+  }
+
+  // -------------------------
+  // Ebene 2.4 — Trading Policy (OS)
+  // -------------------------
+  const policyBaseMaxLoss =
+    stopDaily ?? (maxDailyLoss != null ? maxDailyLoss : -50);
+
+  let maxTradesToday = 6;
+  let sizeMultiplier = 1;
+  let cooldownAfterLosses = 3;
+  let cooldownMinutes = 15;
+  const focus: string[] = [];
+
+  if (riskMode === "CRITICAL") {
+    maxTradesToday = 0;
+    sizeMultiplier = 0;
+    cooldownAfterLosses = 1;
+    cooldownMinutes = 999; // basically: stop
+    focus.push("Stop trading. Switch to review mode only.");
+    focus.push("Audit the last 10 trades: rule breaks + outlier losses.");
+    focus.push("No size increases until break-even recovered.");
+  } else if (riskMode === "RECOVERY") {
+    maxTradesToday = 3;
+    sizeMultiplier = 0.5;
+    cooldownAfterLosses = 2;
+    cooldownMinutes = 30;
+    focus.push("Only A+ setups. No experiments.");
+    focus.push("Hard daily stop. Stop immediately when hit.");
+    focus.push("No revenge trades after a loss.");
+  } else if (riskMode === "CAUTION") {
+    maxTradesToday = 5;
+    sizeMultiplier = 0.75;
+    cooldownAfterLosses = 3;
+    cooldownMinutes = 20;
+    focus.push("Keep size stable. Avoid scaling up.");
+    focus.push("Take a short reset after 2 trades.");
+    focus.push("Stop trading if day turns negative.");
+  } else {
+    // NORMAL
+    maxTradesToday = 8;
+    sizeMultiplier = 1;
+    cooldownAfterLosses = 3;
+    cooldownMinutes = 10;
+    focus.push("Keep risk constant.");
+    focus.push("Avoid extra trades outside plan.");
+    focus.push("Protect gains: don’t give back green days.");
+  }
+
+  // If you already have a computed stopDaily -> make sure policy uses it
+  const policy: TradingPolicy = {
+    mode: riskMode,
+    allowed: tradingAllowed as any,
+    maxTradesToday,
+    maxDailyLoss: policyBaseMaxLoss, // negative
+    sizeMultiplier,
+    cooldownAfterLosses,
+    cooldownMinutes,
+    focus,
+  };
+
+  // -------------------------
+  // Ebene 2.5 — Next Session Checklist (Guided)
+  // -------------------------
+  const ddAbsNow = Math.abs(currentDrawdown ?? 0);
+  const worstDay = daily?.worstDayPnl ?? 0;
+
+  const checklistDo: string[] = [];
+  const checklistDont: string[] = [];
+  const ifThen: { if: string; then: string }[] = [];
+
+  // Headline based on mode
+  const headline =
+    riskMode === "CRITICAL"
+      ? "Critical mode: protect capital"
+      : riskMode === "RECOVERY"
+        ? "Recovery session: regain stability"
+        : riskMode === "CAUTION"
+          ? "Caution session: tighten execution"
+          : "Normal session: keep discipline";
+
+  // Core "Do" derived from policy
+  checklistDo.push(`Follow policy: max ${policy.maxTradesToday} trades today.`);
+  checklistDo.push(
+    `Trade size: ${Math.round(policy.sizeMultiplier * 100)}% of normal.`,
+  );
+  checklistDo.push(`Hard stop: stop the day at ${policy.maxDailyLoss}.`);
+
+  // Situation-specific
+  if (ddPctNow >= 0.1)
+    checklistDo.push("Only A+ setups. Skip anything marginal.");
+  if (maxLossStreak >= 3)
+    checklistDo.push(
+      "Cooldown after a loss-streak trigger (walk away + reset).",
+    );
+
+  // "Don't"
+  checklistDont.push("No revenge trades.");
+  checklistDont.push("No size increase after wins.");
+  if (riskMode !== "NORMAL")
+    checklistDont.push("No experiments / new strategy while not in NORMAL.");
+
+  // IF/THEN rules (these are the real OS feeling)
+  ifThen.push({
+    if: `You hit daily loss ≤ ${policy.maxDailyLoss}`,
+    then: "Stop trading immediately. Review only.",
+  });
+
+  ifThen.push({
+    if: `You take ${policy.cooldownAfterLosses} losses in a row`,
+    then: `Take a ${policy.cooldownMinutes}m cooldown. No chart watching.`,
+  });
+
+  ifThen.push({
+    if: "You feel the urge to “make it back quickly”",
+    then: "Stop. Reduce size or end session.",
+  });
+
+  // Add a drawdown-recovery rule
+  if (distanceToBreakeven != null && distanceToBreakeven > 0) {
+    ifThen.push({
+      if: `You are still ${distanceToBreakeven.toFixed(2)} away from break-even`,
+      then: "Your goal is consistency, not recovery speed. Keep risk capped.",
+    });
+  }
+
+  // Worst day guardrail
+  if (worstDay < 0) {
+    const softStop = worstDay * 0.6; // 60% of worst day loss
+    ifThen.push({
+      if: `Today’s loss reaches ${softStop.toFixed(2)} (soft stop)`,
+      then: "Pause and reassess. Continue only if you can state your exact A+ criteria.",
+    });
+  }
+
+  const checklist: NextSessionChecklist = {
+    headline,
+    do: checklistDo.slice(0, 6),
+    dont: checklistDont.slice(0, 6),
+    ifThen: ifThen.slice(0, 6),
+  };
+
   return {
     equity: equityPoints,
 
@@ -747,6 +1306,20 @@ export function computeRiskSummary(
     requiredReturnPct,
     riskMode,
     tradingAllowed,
+
+    alerts,
+    modeExplanation,
+
+    rulesNow,
+    planNextSession,
+    bestMove,
+
+    rootCauses: rankedRootCauses,
+    countermeasures,
+
+    policy,
+
+    checklist,
 
     daily: {
       worstDayPnl,
