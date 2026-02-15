@@ -575,6 +575,58 @@ function Section({
   );
 }
 
+function Disclosure({
+  title,
+  subtitle,
+  right,
+  defaultOpen = false,
+  children,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  right?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="card"
+      style={{ padding: 0, borderRadius: 16, marginTop: 12 }}
+    >
+      <summary
+        style={{
+          listStyle: "none",
+          cursor: "pointer",
+          padding: 16,
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 1000 }}>{title}</div>
+          {subtitle ? (
+            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+              {subtitle}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {right ? <div>{right}</div> : null}
+          <span className="p-muted" style={{ fontSize: 12, opacity: 0.8 }}>
+            toggle
+          </span>
+        </div>
+      </summary>
+
+      <div style={{ padding: "0 16px 16px" }}>{children}</div>
+    </details>
+  );
+}
+
 export default function RiskPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -608,6 +660,7 @@ export default function RiskPage() {
   return (
     <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
       {/* ===== Header ===== */}
+      {/*
       <div
         className="card"
         style={{ padding: 16, borderRadius: 16, marginBottom: 14 }}
@@ -689,6 +742,8 @@ export default function RiskPage() {
         </div>
       </div>
 
+      */}
+
       {/* ===== Empty State ===== */}
       {!hasSession ? (
         <div className="card" style={{ padding: 16, borderRadius: 16 }}>
@@ -708,7 +763,335 @@ export default function RiskPage() {
         </div>
       ) : (
         <>
-          {/* ===== 1) At a glance ===== */}
+          {/* ===== 1) Current State (Hero) ===== */}
+          <Section
+            title="Current State"
+            subtitle="Your status right now — the minimum you need to make the next decision."
+            right={
+              <span
+                className="badge"
+                style={{
+                  borderColor:
+                    risk?.riskMode === "CRITICAL"
+                      ? "rgba(251,113,133,0.35)"
+                      : risk?.riskMode === "RECOVERY"
+                        ? "rgba(251,191,36,0.35)"
+                        : "rgba(54,211,153,0.25)",
+                  background:
+                    risk?.riskMode === "CRITICAL"
+                      ? "rgba(251,113,133,0.12)"
+                      : risk?.riskMode === "RECOVERY"
+                        ? "rgba(251,191,36,0.10)"
+                        : "rgba(54,211,153,0.10)",
+                }}
+              >
+                Mode: <b>{risk?.riskMode ?? "—"}</b> · Trading{" "}
+                <b>{risk?.tradingAllowed ?? "—"}</b>
+              </span>
+            }
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+              }}
+            >
+              <div style={{ gridColumn: "span 3" }}>
+                <StatCard
+                  title="Stability Score"
+                  value={<span>{risk?.stabilityScore ?? 0}/100</span>}
+                  sub={
+                    <span className="p-muted">
+                      {scoreTone(risk?.stabilityScore ?? 0) === "GOOD"
+                        ? "Healthy"
+                        : scoreTone(risk?.stabilityScore ?? 0) === "OK"
+                          ? "Needs work"
+                          : "High risk"}
+                    </span>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 3" }}>
+                <StatCard
+                  title="Current Drawdown"
+                  value={
+                    <span
+                      style={{
+                        color:
+                          (risk?.currentDrawdown ?? 0) < 0
+                            ? "#ff6b6b"
+                            : "var(--text)",
+                      }}
+                    >
+                      {fmtMoney(risk?.currentDrawdown ?? 0)}
+                    </span>
+                  }
+                  sub={
+                    <>
+                      from peak{" "}
+                      <b>
+                        {risk?.currentDrawdownPct != null
+                          ? fmtPct(risk.currentDrawdownPct)
+                          : "—"}
+                      </b>
+                    </>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 3" }}>
+                <StatCard
+                  title="Distance to Break-even"
+                  value={fmtMoneyLike(risk?.distanceToBreakeven ?? 0, ccy)}
+                  sub={
+                    <>
+                      Required return{" "}
+                      <b>{fmtPctOrDash(risk?.requiredReturnPct ?? null)}</b>
+                    </>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 3" }}>
+                <StatCard
+                  title="Max Daily Loss (guide)"
+                  value={
+                    <span
+                      className={pnlClass(
+                        (risk as any)?.daily?.maxDailyLoss ?? 0,
+                      )}
+                    >
+                      {fmtMoney((risk as any)?.daily?.maxDailyLoss ?? 0)}
+                    </span>
+                  }
+                  sub="Worst day in dataset"
+                />
+              </div>
+            </div>
+          </Section>
+
+          {/* ===== 2) Why (Diagnosis) ===== */}
+          <Section
+            title="Why (Diagnosis)"
+            subtitle="The 3 biggest reasons behind your current mode — so you know what to fix first."
+          >
+            {/* Row 1: Alerts + Why this mode */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+              }}
+            >
+              {/* Alerts */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div
+                  className="card"
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.02)",
+                    height: "100%",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Top signals</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    The biggest current risk signals
+                  </div>
+
+                  {alerts.length ? (
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {alerts.slice(0, 3).map((a: any) => (
+                        <div
+                          key={a.key}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                            display: "flex",
+                            alignItems: "flex-start",
+                            justifyContent: "space-between",
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 900, fontSize: 13 }}>
+                              {a.title}
+                            </div>
+                            <div
+                              className="p-muted"
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {a.detail}
+                            </div>
+                          </div>
+
+                          <span
+                            className="badge"
+                            style={{
+                              borderColor:
+                                a.severity === "CRITICAL"
+                                  ? "rgba(251,113,133,0.35)"
+                                  : a.severity === "WARN"
+                                    ? "rgba(250,204,21,0.35)"
+                                    : "rgba(96,165,250,0.30)",
+                              background:
+                                a.severity === "CRITICAL"
+                                  ? "rgba(251,113,133,0.12)"
+                                  : a.severity === "WARN"
+                                    ? "rgba(250,204,21,0.10)"
+                                    : "rgba(96,165,250,0.10)",
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {a.severity}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 12, fontSize: 12 }}
+                    >
+                      No alerts. You’re in a clean state.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Why this mode */}
+              <div style={{ gridColumn: "span 6" }}>
+                <div
+                  className="card"
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.02)",
+                    height: "100%",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Why this mode</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Explanation of your current Risk Mode decision
+                  </div>
+
+                  {modeExplanation ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13 }}>
+                        {modeExplanation.title}
+                      </div>
+
+                      {modeExplanation.bullets?.length ? (
+                        <ul
+                          style={{
+                            marginTop: 10,
+                            paddingLeft: 18,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {modeExplanation.bullets
+                            .slice(0, 4)
+                            .map((b: string, i: number) => (
+                              <li
+                                key={i}
+                                className="p-muted"
+                                style={{ fontSize: 12 }}
+                              >
+                                {b}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <div
+                          className="p-muted"
+                          style={{ marginTop: 10, fontSize: 12 }}
+                        >
+                          —
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 12, fontSize: 12 }}
+                    >
+                      —
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Root causes */}
+            {((risk as any)?.rootCauses ?? []).length ? (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontWeight: 1000, marginBottom: 8 }}>
+                  Root causes
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {((risk as any)?.rootCauses ?? [])
+                    .slice(0, 3)
+                    .map((c: any) => (
+                      <div
+                        key={c.key}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.02)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 900 }}>{c.title}</div>
+                          <div
+                            className="p-muted"
+                            style={{
+                              marginTop: 6,
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            <div>
+                              <b>Evidence:</b> {c.evidence}
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <b>Impact:</b> {c.impactHint}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ flexShrink: 0 }}>
+                          {sevPill(c.severity)}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
+          </Section>
+
+          {/* ===== 2) At a glance (moved down) ===== */}
           <Section
             title="At a glance"
             subtitle="Core stability + drawdown + edge metrics. Same values as before — just organized."
@@ -839,177 +1222,33 @@ export default function RiskPage() {
               </div>
             </div>
 
-            {/* Ebene 2: Alerts + Mode Explanation */}
+            {/* Charts directly under KPIs (same charts, better placement) */}
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(12, 1fr)",
-                gap: 12,
                 marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
               }}
             >
-              {/* Alerts */}
-              <div style={{ gridColumn: "span 6" }}>
-                <div
-                  className="card"
-                  style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid var(--border)",
-                    background: "rgba(255,255,255,0.02)",
-                  }}
-                >
-                  <div style={{ fontWeight: 1000 }}>Alerts</div>
-                  <div
-                    className="p-muted"
-                    style={{ marginTop: 6, fontSize: 12 }}
-                  >
-                    The biggest current risk signals
-                  </div>
-
-                  {alerts.length ? (
-                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                      {alerts.slice(0, 4).map((a: any) => (
-                        <div
-                          key={a.key}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            background: "rgba(255,255,255,0.02)",
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "space-between",
-                            gap: 12,
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 900, fontSize: 13 }}>
-                              {a.title}
-                            </div>
-                            <div
-                              className="p-muted"
-                              style={{
-                                marginTop: 4,
-                                fontSize: 12,
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {a.detail}
-                            </div>
-                          </div>
-
-                          <span
-                            className="badge"
-                            style={{
-                              borderColor:
-                                a.severity === "CRITICAL"
-                                  ? "rgba(251,113,133,0.35)"
-                                  : a.severity === "WARN"
-                                    ? "rgba(250,204,21,0.35)"
-                                    : "rgba(96,165,250,0.30)",
-                              background:
-                                a.severity === "CRITICAL"
-                                  ? "rgba(251,113,133,0.12)"
-                                  : a.severity === "WARN"
-                                    ? "rgba(250,204,21,0.10)"
-                                    : "rgba(96,165,250,0.10)",
-                              whiteSpace: "nowrap",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {a.severity}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      className="p-muted"
-                      style={{ marginTop: 12, fontSize: 12 }}
-                    >
-                      No alerts. You’re in a clean state.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Why this mode */}
-              <div style={{ gridColumn: "span 6" }}>
-                <div
-                  className="card"
-                  style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid var(--border)",
-                    background: "rgba(255,255,255,0.02)",
-                  }}
-                >
-                  <div style={{ fontWeight: 1000 }}>Why this Mode</div>
-                  <div
-                    className="p-muted"
-                    style={{ marginTop: 6, fontSize: 12 }}
-                  >
-                    Explanation of your current Risk Mode decision
-                  </div>
-
-                  {modeExplanation ? (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontWeight: 900, fontSize: 13 }}>
-                        {modeExplanation.title}
-                      </div>
-
-                      {modeExplanation.bullets?.length ? (
-                        <ul
-                          style={{
-                            marginTop: 10,
-                            paddingLeft: 18,
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          {modeExplanation.bullets
-                            .slice(0, 6)
-                            .map((b: string, i: number) => (
-                              <li
-                                key={i}
-                                className="p-muted"
-                                style={{ fontSize: 12 }}
-                              >
-                                {b}
-                              </li>
-                            ))}
-                        </ul>
-                      ) : (
-                        <div
-                          className="p-muted"
-                          style={{ marginTop: 10, fontSize: 12 }}
-                        >
-                          —
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div
-                      className="p-muted"
-                      style={{ marginTop: 12, fontSize: 12 }}
-                    >
-                      —
-                    </div>
-                  )}
-                </div>
-              </div>
+              <MiniDrawdownChart points={risk?.equity ?? []} />
+              <MiniEquityChart points={risk?.equity ?? []} />
             </div>
+          </Section>
 
-            {/* Ebene 2.2 — Rules Now + Next Session Plan */}
+          {/* ===== 4) Plan ===== */}
+          <Section
+            title="Plan"
+            subtitle="Concrete actions for your next session — rules, limits and recovery steps."
+          >
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(12, 1fr)",
                 gap: 12,
-                marginTop: 12,
               }}
             >
-              {/* Best Move + Rules */}
+              {/* Best Move + Rules now */}
               <div style={{ gridColumn: "span 6" }}>
                 <div className="card" style={{ padding: 16, borderRadius: 16 }}>
                   <div style={{ fontWeight: 1000 }}>Best Move</div>
@@ -1099,7 +1338,7 @@ export default function RiskPage() {
                     className="p-muted"
                     style={{ marginTop: 6, fontSize: 12 }}
                   >
-                    A concrete 3-step operating plan
+                    A simple 3-step operating plan
                   </div>
 
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
@@ -1147,131 +1386,69 @@ export default function RiskPage() {
               </div>
             </div>
 
-            {/* Ebene 2.3 — Root Causes + Countermeasures */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(12, 1fr)",
-                gap: 12,
-                marginTop: 12,
-              }}
-            >
-              <div style={{ gridColumn: "span 5" }}>
-                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
-                  <div style={{ fontWeight: 1000 }}>Root causes (ranked)</div>
-                  <div
-                    className="p-muted"
-                    style={{ marginTop: 6, fontSize: 12 }}
-                  >
-                    Why you are where you are — ranked by impact
-                  </div>
+            {/* Countermeasures (full width) */}
+            {((risk as any)?.countermeasures ?? []).length ? (
+              <div
+                className="card"
+                style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
+              >
+                <div style={{ fontWeight: 1000 }}>Countermeasures</div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  Concrete actions tailored to your causes
+                </div>
 
-                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                    {((risk as any)?.rootCauses ?? []).map((c: any) => (
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {((risk as any)?.countermeasures ?? [])
+                    .slice(0, 3)
+                    .map((m: any) => (
                       <div
-                        key={c.key}
+                        key={m.key}
                         style={{
-                          padding: "10px 12px",
+                          padding: "12px 12px",
                           borderRadius: 14,
                           border: "1px solid rgba(255,255,255,0.08)",
                           background: "rgba(255,255,255,0.02)",
                         }}
                       >
-                        <div
+                        <div style={{ fontWeight: 900 }}>{m.title}</div>
+                        <ul
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 10,
+                            marginTop: 8,
+                            paddingLeft: 18,
+                            lineHeight: 1.5,
                           }}
                         >
-                          <div style={{ fontWeight: 900 }}>{c.title}</div>
-                          {sevPill(c.severity)}
-                        </div>
+                          {(m.steps ?? []).map((s: string, i: number) => (
+                            <li
+                              key={i}
+                              className="p-muted"
+                              style={{ fontSize: 12 }}
+                            >
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
                         <div
                           className="p-muted"
-                          style={{
-                            marginTop: 6,
-                            fontSize: 12,
-                            lineHeight: 1.45,
-                          }}
+                          style={{ marginTop: 8, fontSize: 12 }}
                         >
-                          <div>
-                            <b>Evidence:</b> {c.evidence}
-                          </div>
-                          <div style={{ marginTop: 4 }}>
-                            <b>Impact:</b> {c.impactHint}
-                          </div>
+                          <b>Watch:</b> {m.metricToWatch}
                         </div>
                       </div>
                     ))}
-                  </div>
                 </div>
               </div>
+            ) : null}
 
-              <div style={{ gridColumn: "span 7" }}>
-                <div className="card" style={{ padding: 16, borderRadius: 16 }}>
-                  <div style={{ fontWeight: 1000 }}>Countermeasures</div>
-                  <div
-                    className="p-muted"
-                    style={{ marginTop: 6, fontSize: 12 }}
-                  >
-                    Concrete actions tailored to your causes
-                  </div>
-
-                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                    {((risk as any)?.countermeasures ?? [])
-                      .slice(0, 3)
-                      .map((m: any) => (
-                        <div
-                          key={m.key}
-                          style={{
-                            padding: "12px 12px",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            background: "rgba(255,255,255,0.02)",
-                          }}
-                        >
-                          <div style={{ fontWeight: 900 }}>{m.title}</div>
-                          <ul
-                            style={{
-                              marginTop: 8,
-                              paddingLeft: 18,
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {(m.steps ?? []).map((s: string, i: number) => (
-                              <li
-                                key={i}
-                                className="p-muted"
-                                style={{ fontSize: 12 }}
-                              >
-                                {s}
-                              </li>
-                            ))}
-                          </ul>
-                          <div
-                            className="p-muted"
-                            style={{ marginTop: 8, fontSize: 12 }}
-                          >
-                            <b>Watch:</b> {m.metricToWatch}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Ebene 2.4 — Trading Policy (OS) */}
+            {/* Trading Policy + Checklist (optional, collapsed later in Step 4) */}
             {risk?.policy ? (
               <div
                 className="card"
-                style={{ padding: 16, borderRadius: 16, marginBottom: 12 }}
+                style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "baseline",
                     justifyContent: "space-between",
                     gap: 10,
                     flexWrap: "wrap",
@@ -1345,16 +1522,14 @@ export default function RiskPage() {
               </div>
             ) : null}
 
-            {/* Ebene 2.5 — Next Session Checklist */}
             {risk?.checklist ? (
               <div
                 className="card"
-                style={{ padding: 16, borderRadius: 16, marginBottom: 12 }}
+                style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "baseline",
                     justifyContent: "space-between",
                     gap: 10,
                     flexWrap: "wrap",
@@ -1438,62 +1613,106 @@ export default function RiskPage() {
                 </div>
               </div>
             ) : null}
-
-            {/* Charts directly under KPIs (same charts, better placement) */}
-            <div
-              style={{
-                marginTop: 12,
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}
-            >
-              <MiniDrawdownChart points={risk?.equity ?? []} />
-              <MiniEquityChart points={risk?.equity ?? []} />
-            </div>
           </Section>
 
-          {/* ===== 2) Drivers ===== */}
-          {risk?.drivers?.length ? (
-            <Section
-              title="Top Risk Drivers"
-              subtitle="Why your Stability Score looks like this"
-            >
-              <div style={{ display: "grid", gap: 10 }}>
-                {risk.drivers.slice(0, 3).map((d: any, idx: number) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "10px 12px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background: "rgba(255,255,255,0.02)",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 1000 }}>{d.label}</div>
-                      <div
-                        className="p-muted"
-                        style={{ marginTop: 4, fontSize: 12 }}
-                      >
-                        {d.detail}
+          {/* ===== Details (deep dive) ===== */}
+          <Section
+            title="Details"
+            subtitle="More analytics and explanations — open only what you need."
+          >
+            {/* 1) Drivers */}
+            {risk?.drivers?.length ? (
+              <Disclosure
+                title="Top Risk Drivers"
+                subtitle="Why your Stability Score looks like this"
+                defaultOpen={false}
+              >
+                <div style={{ display: "grid", gap: 10 }}>
+                  {risk.drivers.slice(0, 3).map((d: any, idx: number) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 12px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 1000 }}>{d.label}</div>
+                        <div
+                          className="p-muted"
+                          style={{ marginTop: 4, fontSize: 12 }}
+                        >
+                          {d.detail}
+                        </div>
                       </div>
+                      {sevPill(d.severity)}
                     </div>
-                    {sevPill(d.severity)}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </Disclosure>
+            ) : null}
 
-              <div className="p-muted" style={{ marginTop: 12, fontSize: 12 }}>
-                Next: we can add “1 recommended rule” (e.g. stop after X losses
-                / max daily loss).
+            {/* 2) Risk Score */}
+            <Disclosure
+              title="Tradevion Risk Score (v1)"
+              subtitle="Penalties and score calculation overview"
+              defaultOpen={false}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(12, 1fr)",
+                  gap: 12,
+                }}
+              >
+                <div style={{ gridColumn: "span 5" }}>
+                  {/* paste your existing Risk Score card here */}
+                </div>
+
+                <div style={{ gridColumn: "span 7" }}>
+                  {/* paste your existing What to do next (v1) card here */}
+                </div>
               </div>
-            </Section>
-          ) : null}
+            </Disclosure>
+
+            {/* 3) Explanation */}
+            <Disclosure
+              title="Why this score"
+              subtitle="Reasons + 3 rules to improve"
+              defaultOpen={false}
+            >
+              {/* paste your existing 'Why this score' Section content here */}
+            </Disclosure>
+
+            {/* 4) Drawdown phases */}
+            <Disclosure
+              title="Drawdown Phases"
+              subtitle="Peak → trough → recovery timeline"
+              right={
+                <span className="p-muted" style={{ fontSize: 12 }}>
+                  {periods.length} total
+                </span>
+              }
+              defaultOpen={false}
+            >
+              {/* paste your existing Drawdown Phases Section content here */}
+            </Disclosure>
+
+            {/* 5) Roadmap */}
+            <Disclosure
+              title="Next actions (v1)"
+              subtitle="Roadmap of what comes next"
+              defaultOpen={false}
+            >
+              {/* paste your existing Roadmap block here */}
+            </Disclosure>
+          </Section>
 
           {/* ===== 3) Scoring + Guidance ===== */}
           <div

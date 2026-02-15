@@ -2169,7 +2169,9 @@ export default function PerformancePage() {
               Sharpe-lite provides a quick risk-adjusted view based on daily
               returns. It excludes a risk-free rate and is not annualized.
             </div>
+
             {/* Early Access Overlay */}
+            {/*
             <div
               style={{
                 position: "fixed",
@@ -2231,6 +2233,7 @@ export default function PerformancePage() {
                 </p>
               </div>
             </div>
+            */}
           </>
         )}
       </div>
