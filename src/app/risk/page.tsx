@@ -1162,9 +1162,12 @@ export default function RiskPage() {
                       className="p-muted"
                       style={{ fontSize: 12, textAlign: "right" }}
                     >
-                      DD days: <b>{fmtDays(p.daysInDrawdown)}</b>
+                      DD days: <b>{fmtDays(p.durationDays)}</b>
                       <br />
-                      Recovery: <b>{fmtDays(p.daysToRecover)}</b>
+                      Recovery:{" "}
+                      <b>
+                        {p.recoveryDays == null ? "—" : fmtDays(p.recoveryDays)}
+                      </b>
                     </div>
                   </div>
                 ))}
