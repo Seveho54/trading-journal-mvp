@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { RiskOS, RiskTabKey } from "./RiskOS";
 import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { computeRiskSummary } from "@/lib/risk";
@@ -51,7 +52,12 @@ export default function RiskPage() {
   const last3 = periods.slice(-3).reverse(); // show newest first
   const alerts = (risk as any)?.alerts ?? [];
   const modeExplanation = (risk as any)?.modeExplanation ?? null;
+  const rootCauses = (risk as any)?.rootCauses ?? [];
+  const topSignals = alerts.slice(0, 3);
+  const topCauses = rootCauses.slice(0, 3);
+
   const layer3 = (risk as any)?.layer3 ?? null;
+  const [tab, setTab] = useState<RiskTabKey>("diagnosis");
 
   return (
     <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
@@ -268,152 +274,171 @@ export default function RiskPage() {
             </div>
           </Section>
 
-          {/* ===== 2) Why (Diagnosis) ===== */}
-          <Section
-            title="Why (Diagnosis)"
-            subtitle="The 3 biggest reasons behind your current mode — so you know what to fix first."
-          >
-            {/* Row 1: Alerts + Why this mode */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(12, 1fr)",
-                gap: 12,
-              }}
-            >
-              {/* Alerts */}
-              <div style={{ gridColumn: "span 6" }}>
-                <div
-                  className="card"
-                  style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid var(--border)",
-                    background: "rgba(255,255,255,0.02)",
-                    height: "100%",
-                  }}
-                >
-                  <div style={{ fontWeight: 1000 }}>Top signals</div>
+          <RiskOS tab={tab} onTabChange={setTab}>
+            {tab === "diagnosis" ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                {/* Headline */}
+                <div>
+                  <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                    Diagnosis
+                  </div>
                   <div
                     className="p-muted"
                     style={{ marginTop: 6, fontSize: 12 }}
                   >
-                    The biggest current risk signals
+                    Dein aktueller Zustand + die wichtigsten Signale (aus deinen
+                    Daten).
                   </div>
-
-                  {alerts.length ? (
-                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                      {alerts.slice(0, 3).map((a: any) => (
-                        <div
-                          key={a.key}
-                          style={{
-                            padding: "10px 12px",
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            background: "rgba(255,255,255,0.02)",
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "space-between",
-                            gap: 12,
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 900, fontSize: 13 }}>
-                              {a.title}
-                            </div>
-                            <div
-                              className="p-muted"
-                              style={{
-                                marginTop: 4,
-                                fontSize: 12,
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              {a.detail}
-                            </div>
-                          </div>
-
-                          <span
-                            className="badge"
-                            style={{
-                              borderColor:
-                                a.severity === "CRITICAL"
-                                  ? "rgba(251,113,133,0.35)"
-                                  : a.severity === "WARN"
-                                    ? "rgba(250,204,21,0.35)"
-                                    : "rgba(96,165,250,0.30)",
-                              background:
-                                a.severity === "CRITICAL"
-                                  ? "rgba(251,113,133,0.12)"
-                                  : a.severity === "WARN"
-                                    ? "rgba(250,204,21,0.10)"
-                                    : "rgba(96,165,250,0.10)",
-                              whiteSpace: "nowrap",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {a.severity}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      className="p-muted"
-                      style={{ marginTop: 12, fontSize: 12 }}
-                    >
-                      No alerts. You’re in a clean state.
-                    </div>
-                  )}
                 </div>
-              </div>
 
-              {/* Why this mode */}
-              <div style={{ gridColumn: "span 6" }}>
+                {/* Row: Top signals + Why this mode */}
                 <div
-                  className="card"
                   style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid var(--border)",
-                    background: "rgba(255,255,255,0.02)",
-                    height: "100%",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 12,
                   }}
                 >
-                  <div style={{ fontWeight: 1000 }}>Why this mode</div>
-                  <div
-                    className="p-muted"
-                    style={{ marginTop: 6, fontSize: 12 }}
-                  >
-                    Explanation of your current Risk Mode decision
-                  </div>
-
-                  {modeExplanation ? (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontWeight: 900, fontSize: 13 }}>
-                        {modeExplanation.title}
+                  <div style={{ gridColumn: "span 6" }}>
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.02)",
+                        height: "100%",
+                      }}
+                    >
+                      <div style={{ fontWeight: 1000 }}>Top signals</div>
+                      <div
+                        className="p-muted"
+                        style={{ marginTop: 6, fontSize: 12 }}
+                      >
+                        Die größten aktuellen Risiko-Signale
                       </div>
 
-                      {modeExplanation.bullets?.length ? (
-                        <ul
-                          style={{
-                            marginTop: 10,
-                            paddingLeft: 18,
-                            lineHeight: 1.5,
-                          }}
+                      {topSignals.length ? (
+                        <div
+                          style={{ marginTop: 10, display: "grid", gap: 10 }}
                         >
-                          {modeExplanation.bullets
-                            .slice(0, 4)
-                            .map((b: string, i: number) => (
-                              <li
-                                key={i}
-                                className="p-muted"
-                                style={{ fontSize: 12 }}
+                          {topSignals.map((a: any) => (
+                            <div
+                              key={a.key}
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 14,
+                                border: "1px solid rgba(255,255,255,0.08)",
+                                background: "rgba(255,255,255,0.02)",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                justifyContent: "space-between",
+                                gap: 12,
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 900, fontSize: 13 }}>
+                                  {a.title}
+                                </div>
+                                <div
+                                  className="p-muted"
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {a.detail}
+                                </div>
+                              </div>
+
+                              <span
+                                className="badge"
+                                style={{
+                                  borderColor:
+                                    a.severity === "CRITICAL"
+                                      ? "rgba(251,113,133,0.35)"
+                                      : a.severity === "WARN"
+                                        ? "rgba(250,204,21,0.35)"
+                                        : "rgba(96,165,250,0.30)",
+                                  background:
+                                    a.severity === "CRITICAL"
+                                      ? "rgba(251,113,133,0.12)"
+                                      : a.severity === "WARN"
+                                        ? "rgba(250,204,21,0.10)"
+                                        : "rgba(96,165,250,0.10)",
+                                  whiteSpace: "nowrap",
+                                  flexShrink: 0,
+                                }}
                               >
-                                {b}
-                              </li>
-                            ))}
-                        </ul>
+                                {a.severity}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div
+                          className="p-muted"
+                          style={{ marginTop: 10, fontSize: 12 }}
+                        >
+                          Keine Alerts – aktuell sieht es clean aus.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: "span 6" }}>
+                    <div
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.02)",
+                        height: "100%",
+                      }}
+                    >
+                      <div style={{ fontWeight: 1000 }}>Why this mode</div>
+                      <div
+                        className="p-muted"
+                        style={{ marginTop: 6, fontSize: 12 }}
+                      >
+                        Erklärung, warum dein Risk Mode so entschieden wurde
+                      </div>
+
+                      {modeExplanation ? (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontWeight: 900, fontSize: 13 }}>
+                            {modeExplanation.title}
+                          </div>
+
+                          {modeExplanation.bullets?.length ? (
+                            <ul
+                              style={{
+                                marginTop: 10,
+                                paddingLeft: 18,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {modeExplanation.bullets
+                                .slice(0, 5)
+                                .map((b: string, i: number) => (
+                                  <li
+                                    key={i}
+                                    className="p-muted"
+                                    style={{ fontSize: 12 }}
+                                  >
+                                    {b}
+                                  </li>
+                                ))}
+                            </ul>
+                          ) : (
+                            <div
+                              className="p-muted"
+                              style={{ marginTop: 10, fontSize: 12 }}
+                            >
+                              —
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div
                           className="p-muted"
@@ -423,69 +448,84 @@ export default function RiskPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Root causes mini list */}
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000 }}>Root causes (top)</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    System-Level Ursachen (Evidence + Impact)
+                  </div>
+
+                  {topCauses.length ? (
+                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                      {topCauses.map((c: any) => (
+                        <div
+                          key={c.key}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 900 }}>{c.title}</div>
+                            <div
+                              className="p-muted"
+                              style={{
+                                marginTop: 6,
+                                fontSize: 12,
+                                lineHeight: 1.45,
+                              }}
+                            >
+                              <div>
+                                <b>Evidence:</b> {c.evidence}
+                              </div>
+                              <div style={{ marginTop: 4 }}>
+                                <b>Impact:</b> {c.impactHint}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ flexShrink: 0 }}>
+                            {sevPill(c.severity)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <div
                       className="p-muted"
-                      style={{ marginTop: 12, fontSize: 12 }}
+                      style={{ marginTop: 10, fontSize: 12 }}
                     >
-                      —
+                      Keine Root Causes erkannt (oder nicht genug Daten).
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
 
-            {/* Row 2: Root causes */}
-            {((risk as any)?.rootCauses ?? []).length ? (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 1000, marginBottom: 8 }}>
-                  Root causes
-                </div>
-
-                <div style={{ display: "grid", gap: 10 }}>
-                  {((risk as any)?.rootCauses ?? [])
-                    .slice(0, 3)
-                    .map((c: any) => (
-                      <div
-                        key={c.key}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.08)",
-                          background: "rgba(255,255,255,0.02)",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 900 }}>{c.title}</div>
-                          <div
-                            className="p-muted"
-                            style={{
-                              marginTop: 6,
-                              fontSize: 12,
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            <div>
-                              <b>Evidence:</b> {c.evidence}
-                            </div>
-                            <div style={{ marginTop: 4 }}>
-                              <b>Impact:</b> {c.impactHint}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ flexShrink: 0 }}>
-                          {sevPill(c.severity)}
-                        </div>
-                      </div>
-                    ))}
+                {/* CTA hint */}
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  Nächster Schritt: Wechsel auf <b>Why</b>, um Beweise (Layer 3)
+                  & passende Countermeasures zu sehen.
                 </div>
               </div>
             ) : null}
-          </Section>
+          </RiskOS>
 
           {/* ===== 2) At a glance (moved down) ===== */}
           {/*
