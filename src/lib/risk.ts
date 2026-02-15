@@ -1727,3 +1727,8 @@ export function computeRiskSummary(
     daily: dailyStats,
   };
 }
+
+export type RiskSummary = ReturnType<typeof computeRiskSummary>;
+export type ScenarioForecast = NonNullable<
+  RiskSummary["scenarioForecasts"]
+>[number];

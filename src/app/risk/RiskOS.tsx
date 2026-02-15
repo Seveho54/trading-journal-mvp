@@ -2,7 +2,12 @@
 
 import React from "react";
 
-export type RiskTabKey = "diagnosis" | "why" | "meaning" | "action";
+export type RiskTabKey =
+  | "diagnosis"
+  | "why"
+  | "meaning"
+  | "action"
+  | "forecast";
 
 export function RiskOS({
   tab,
@@ -68,6 +73,12 @@ export function RiskOS({
         </TabBtn>
         <TabBtn active={tab === "action"} onClick={() => onTabChange("action")}>
           Action
+        </TabBtn>
+        <TabBtn
+          active={tab === "forecast"}
+          onClick={() => onTabChange("forecast")}
+        >
+          Forecast
         </TabBtn>
       </div>
     </div>

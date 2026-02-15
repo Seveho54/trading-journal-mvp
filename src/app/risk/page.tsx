@@ -57,6 +57,204 @@ function MiniKPI({
   );
 }
 
+function ScenarioSelector({
+  scenarios,
+  ccy,
+}: {
+  scenarios: any[];
+  ccy: string;
+}) {
+  const [selectedKey, setSelectedKey] = React.useState(scenarios[0]?.key);
+
+  const selected = scenarios.find((s) => s.key === selectedKey) ?? scenarios[0];
+
+  const scored = scenarios.map((s) => {
+    const delta = s.delta ?? 0;
+    const dd = Math.abs(s.maxDrawdown ?? 0);
+    const score = delta - 0.5 * dd;
+
+    return { ...s, _score: score };
+  });
+
+  const bestScenario =
+    scored.length > 0
+      ? scored.sort((a, b) => (b._score ?? 0) - (a._score ?? 0))[0]
+      : null;
+
+  const baseline = scenarios.find((s) => s.key === "baseline") ?? scenarios[0];
+  const deltaVsBaseline =
+    baseline && selected ? (selected.delta ?? 0) - (baseline.delta ?? 0) : 0;
+
+  const deltaClass =
+    (selected?.delta ?? 0) >= 0 ? "pnl-positive" : "pnl-negative";
+  const deltaVsBaseClass =
+    deltaVsBaseline >= 0 ? "pnl-positive" : "pnl-negative";
+
+  const deltaCls = pnlClass(selected?.delta ?? 0);
+  const deltaVsBaseCls = pnlClass(deltaVsBaseline);
+
+  if (!selected) return null;
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {/* Mini Menu */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        {scenarios.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSelectedKey(s.key)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                selectedKey === s.key
+                  ? "rgba(54,211,153,0.15)"
+                  : "rgba(255,255,255,0.05)",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Scenario Result */}
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 14,
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.02)",
+        }}
+      >
+        <div style={{ fontWeight: 900 }}>{selected.label}</div>
+        <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+          {selected.why}
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "repeat(12, 1fr)",
+            gap: 10,
+          }}
+        >
+          <div style={{ gridColumn: "span 4" }}>
+            <MiniKPI
+              label="End Equity"
+              value={fmtMoneyLike(selected.endEquity ?? 0, ccy)}
+              hint={`Start: ${fmtMoneyLike(selected.startEquity ?? 0, ccy)}`}
+            />
+          </div>
+
+          <div style={{ gridColumn: "span 4" }}>
+            <MiniKPI
+              label="Δ from now"
+              value={
+                <span className={pnlClass(selected.delta ?? 0)}>
+                  {fmtMoneyLike(selected.delta ?? 0, ccy)}
+                </span>
+              }
+              hint={
+                baseline ? (
+                  <span className={pnlClass(deltaVsBaseline)}>
+                    vs baseline: {fmtMoneyLike(deltaVsBaseline, ccy)}
+                  </span>
+                ) : null
+              }
+            />
+          </div>
+
+          <div style={{ gridColumn: "span 4" }}>
+            <MiniKPI
+              label="Max Drawdown"
+              value={
+                <span className={pnlClass(selected.maxDrawdown ?? 0)}>
+                  {fmtMoneyLike(selected.maxDrawdown ?? 0, ccy)}
+                </span>
+              }
+              hint={
+                selected.maxDrawdownPct != null
+                  ? `≈ ${(selected.maxDrawdownPct * 100).toFixed(1)}%`
+                  : null
+              }
+            />
+          </div>
+        </div>
+
+        {/* Equity Curve */}
+        <div style={{ marginTop: 14 }}>
+          <MiniEquityChart points={selected.curve ?? []} />
+        </div>
+
+        {/* Top scenarios (compact) */}
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <div className="p-muted" style={{ fontSize: 12, fontWeight: 900 }}>
+            Best scenarios (by Δ)
+          </div>
+
+          {[...scenarios]
+            .sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0))
+            .slice(0, 3)
+            .map((s) => (
+              <div
+                key={s.key}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.02)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  cursor: "pointer",
+                }}
+                onClick={() => setSelectedKey(s.key)}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, fontSize: 12 }}>{s.label}</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 4, fontSize: 12 }}
+                  >
+                    {s.why}
+                  </div>
+                </div>
+
+                <div style={{ flexShrink: 0, textAlign: "right" }}>
+                  <div
+                    className={pnlClass(s.delta ?? 0)}
+                    style={{ fontWeight: 1000 }}
+                  >
+                    {fmtMoneyLike(s.delta ?? 0, ccy)}
+                  </div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 2, fontSize: 12 }}
+                  >
+                    DD:{" "}
+                    <span className={pnlClass(s.maxDrawdown ?? 0)}>
+                      {fmtMoneyLike(s.maxDrawdown ?? 0, ccy)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RiskPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -1418,6 +1616,33 @@ export default function RiskPage() {
                     {fmtMoney(risk.policy.maxDailyLoss)}
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+            {tab === "forecast" ? (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 1000, fontSize: 16 }}>Forecast</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    What happens if you continue like this — or change behavior?
+                  </div>
+                </div>
+
+                {!risk?.scenarioForecasts?.length ? (
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    Not enough data to simulate scenarios.
+                  </div>
+                ) : (
+                  <>
+                    {/* Scenario selector */}
+                    <ScenarioSelector
+                      scenarios={risk.scenarioForecasts}
+                      ccy={ccy}
+                    />
+                  </>
+                )}
               </div>
             ) : null}
           </RiskOS>
