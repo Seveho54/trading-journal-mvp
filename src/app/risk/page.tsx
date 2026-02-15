@@ -17,6 +17,12 @@ function fmtPct1(x: number) {
     maximumFractionDigits: 1,
   }).format(x);
 }
+
+function fmtDays(n: number | null | undefined) {
+  if (n == null) return "—";
+  return `${n} day${n === 1 ? "" : "s"}`;
+}
+
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
 }
@@ -541,6 +547,11 @@ export default function RiskPage() {
     );
   }, [hasSession, data]);
 
+  const periods = risk?.drawdownPeriods ?? [];
+  const active = risk?.currentDrawdownPeriod ?? null;
+
+  const last3 = periods.slice(-3).reverse(); // show newest first
+
   return (
     <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
       {/* Header */}
@@ -987,6 +998,124 @@ export default function RiskPage() {
                 "—"
               )}
             </div>
+          </div>
+
+          <div
+            className="card"
+            style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 1000 }}>Drawdown Phases</div>
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                {periods.length} total
+              </div>
+            </div>
+
+            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+              A drawdown phase starts at a new peak → ends when equity recovers
+              to that peak.
+            </div>
+
+            {/* Active phase */}
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid var(--border)",
+                background: "rgba(255,255,255,0.02)",
+              }}
+            >
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                {active ? "Current drawdown" : "No active drawdown"}
+              </div>
+
+              {active ? (
+                <div
+                  className="p-muted"
+                  style={{ fontSize: 12, lineHeight: 1.5 }}
+                >
+                  Started: <b>{active.start}</b> • Trough:{" "}
+                  <b>{active.trough}</b> • Depth:{" "}
+                  <b style={{ color: "#ff6b6b" }}>{fmtNum(active.depth)}</b>{" "}
+                  {active.depthPct != null ? (
+                    <>
+                      (≈{" "}
+                      <b style={{ color: "#ff6b6b" }}>
+                        {fmtPct(active.depthPct)}
+                      </b>
+                      )
+                    </>
+                  ) : null}
+                  <br />
+                  Days in DD: <b>{fmtDays(active.daysInDrawdown)}</b>
+                </div>
+              ) : (
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  Your equity is currently at (or above) its last peak.
+                </div>
+              )}
+            </div>
+
+            {/* Last phases */}
+            {last3.length ? (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                {last3.map((p, idx) => (
+                  <div
+                    key={`${p.start}-${idx}`}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                      <div style={{ fontWeight: 900 }}>
+                        {p.start} → {p.recovery ?? "not recovered"}
+                      </div>
+                      <div className="p-muted">
+                        Trough: <b>{p.trough}</b> • Depth:{" "}
+                        <b style={{ color: "#ff6b6b" }}>{fmtNum(p.depth)}</b>{" "}
+                        {p.depthPct != null ? (
+                          <>
+                            (≈{" "}
+                            <b style={{ color: "#ff6b6b" }}>
+                              {fmtPct(p.depthPct)}
+                            </b>
+                            )
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-muted"
+                      style={{ fontSize: 12, textAlign: "right" }}
+                    >
+                      DD days: <b>{fmtDays(p.daysInDrawdown)}</b>
+                      <br />
+                      Recovery: <b>{fmtDays(p.daysToRecover)}</b>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-muted" style={{ marginTop: 12, fontSize: 12 }}>
+                Not enough history yet to detect drawdown phases.
+              </div>
+            )}
           </div>
 
           {/* Equity chart */}

@@ -53,6 +53,139 @@ function computeMaxDrawdown(equity: number[]) {
   return { maxDD, maxDDPct };
 }
 
+type EquityPoint = { t: string; equity: number };
+
+export type DrawdownPeriod = {
+  start: string; // date when equity drops below peak
+  trough: string; // date of lowest equity within the DD
+  recovery: string | null; // date when equity reaches previous peak again (null if ongoing)
+  depth: number; // negative value (equity - peak)
+  depthPct: number | null; // abs(depth)/abs(peak) (null if peak=0)
+  durationDays: number; // start -> recovery (or start -> last point if ongoing)
+  timeToTroughDays: number; // start -> trough
+  recoveryDays: number | null; // trough -> recovery (null if ongoing)
+};
+
+function dayToMs(day: string) {
+  // safe parse for YYYY-MM-DD
+  const d = new Date(day + "T00:00:00");
+  return d.getTime();
+}
+
+function diffDays(a: string, b: string) {
+  const ms = dayToMs(b) - dayToMs(a);
+  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
+}
+
+/**
+ * Detect drawdown periods from an equity curve.
+ * Assumes points are sorted by date ascending.
+ */
+export function detectDrawdownPeriods(points: EquityPoint[]): DrawdownPeriod[] {
+  if (!points || points.length < 2) return [];
+
+  let peak = points[0].equity;
+  let peakDate = points[0].t;
+
+  let inDD = false;
+
+  let ddStart = "";
+  let ddPeak = 0;
+  let ddPeakDate = "";
+
+  let troughEquity = Infinity;
+  let troughDate = "";
+
+  const periods: DrawdownPeriod[] = [];
+
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+
+    // new peak resets state if not in drawdown
+    if (!inDD && p.equity >= peak) {
+      peak = p.equity;
+      peakDate = p.t;
+      continue;
+    }
+
+    // start DD when equity goes below peak
+    if (!inDD && p.equity < peak) {
+      inDD = true;
+      ddStart = p.t;
+      ddPeak = peak;
+      ddPeakDate = peakDate;
+
+      troughEquity = p.equity;
+      troughDate = p.t;
+    }
+
+    if (inDD) {
+      // update trough
+      if (p.equity < troughEquity) {
+        troughEquity = p.equity;
+        troughDate = p.t;
+      }
+
+      // recovery: equity back to previous peak or higher
+      if (p.equity >= ddPeak) {
+        const depth = troughEquity - ddPeak; // negative
+        const depthPct =
+          ddPeak !== 0 ? Math.abs(depth) / Math.abs(ddPeak) : null;
+
+        const durationDays = diffDays(ddStart, p.t);
+        const timeToTroughDays = diffDays(ddStart, troughDate);
+        const recoveryDays = diffDays(troughDate, p.t);
+
+        periods.push({
+          start: ddStart,
+          trough: troughDate,
+          recovery: p.t,
+          depth,
+          depthPct,
+          durationDays,
+          timeToTroughDays,
+          recoveryDays,
+        });
+
+        // exit DD and update peak to current point
+        inDD = false;
+        peak = p.equity;
+        peakDate = p.t;
+
+        // reset
+        ddStart = "";
+        ddPeak = 0;
+        ddPeakDate = "";
+        troughEquity = Infinity;
+        troughDate = "";
+      }
+    }
+  }
+
+  // if still in drawdown at end → ongoing period
+  if (inDD) {
+    const last = points[points.length - 1];
+    const depth = troughEquity - ddPeak; // negative
+    const depthPct = ddPeak !== 0 ? Math.abs(depth) / Math.abs(ddPeak) : null;
+
+    const durationDays = diffDays(ddStart, last.t);
+    const timeToTroughDays = diffDays(ddStart, troughDate);
+
+    periods.push({
+      start: ddStart,
+      trough: troughDate,
+      recovery: null,
+      depth,
+      depthPct,
+      durationDays,
+      timeToTroughDays,
+      recoveryDays: null,
+    });
+  }
+
+  return periods;
+}
+
 export function computeRiskSummary(
   input: { positions: AnyObj[]; trades: AnyObj[]; byDayPositions?: AnyObj[] },
   opts?: { startEquity?: number },
@@ -157,6 +290,12 @@ export function computeRiskSummary(
 
   const equityArr = equityPoints.map((p) => p.equity);
   const { maxDD, maxDDPct } = computeMaxDrawdown(equityArr);
+  const drawdownPeriods = detectDrawdownPeriods(equityPoints);
+  const currentDrawdownPeriod =
+    drawdownPeriods.length &&
+    drawdownPeriods[drawdownPeriods.length - 1].recovery === null
+      ? drawdownPeriods[drawdownPeriods.length - 1]
+      : null;
 
   const lastEquity = equityArr.length
     ? equityArr[equityArr.length - 1]
@@ -507,5 +646,8 @@ export function computeRiskSummary(
     actions: topActions,
 
     drivers,
+
+    drawdownPeriods,
+    currentDrawdownPeriod,
   };
 }
