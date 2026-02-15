@@ -1687,8 +1687,13 @@ export default function RiskPage() {
               subtitle="Reasons + 3 rules to improve"
               defaultOpen={false}
             >
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                Coming next…
+              </div>
               {/* paste your existing 'Why this score' Section content here */}
             </Disclosure>
+
+            {/* paste your existing 'Why this score' Section content here */}
 
             {/* 4) Drawdown phases */}
             <Disclosure
@@ -1701,6 +1706,9 @@ export default function RiskPage() {
               }
               defaultOpen={false}
             >
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                Coming next…
+              </div>
               {/* paste your existing Drawdown Phases Section content here */}
             </Disclosure>
 
@@ -1710,6 +1718,9 @@ export default function RiskPage() {
               subtitle="Roadmap of what comes next"
               defaultOpen={false}
             >
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                Coming next…
+              </div>
               {/* paste your existing Roadmap block here */}
             </Disclosure>
           </Section>
