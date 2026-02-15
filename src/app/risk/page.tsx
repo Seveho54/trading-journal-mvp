@@ -1104,7 +1104,16 @@ export default function RiskPage() {
                     </>
                   ) : null}
                   <br />
-                  Days in DD: <b>{fmtDays(active.daysInDrawdown)}</b>
+                  Days in DD: <b>{fmtDays(active.durationDays)}</b>
+                  <br />
+                  Days to trough: <b>{fmtDays(active.timeToTroughDays)}</b>
+                  <br />
+                  Recovery days:{" "}
+                  <b>
+                    {active.recoveryDays == null
+                      ? "—"
+                      : fmtDays(active.recoveryDays)}
+                  </b>
                 </div>
               ) : (
                 <div className="p-muted" style={{ fontSize: 12 }}>
