@@ -567,6 +567,72 @@ export function computeRiskSummary(
     symbol: getPosSymbol(p),
   }));
 
+  // -------------------------
+  // Symbol analytics (for What-If scenarios)
+  // -------------------------
+  const symbolMap = new Map<
+    string,
+    { pnls: number[]; wins: number; losses: number; total: number }
+  >();
+
+  for (const tr of tradesWithMeta) {
+    const sym = (tr.symbol ?? "—").trim() || "—";
+    // Optional: ignore unknown symbol bucket if you want cleaner scenarios
+    // if (sym === "—") continue;
+
+    const v = tr.pnl;
+    const row = symbolMap.get(sym) ?? {
+      pnls: [],
+      wins: 0,
+      losses: 0,
+      total: 0,
+    };
+
+    row.pnls.push(v);
+    row.total += v;
+    if (v > 0) row.wins += 1;
+    else if (v < 0) row.losses += 1;
+
+    symbolMap.set(sym, row);
+  }
+
+  const symbolStats = Array.from(symbolMap.entries())
+    .map(([symbol, s]) => {
+      const trades = s.pnls.length;
+      const avg = trades ? mean(s.pnls) : 0;
+      const sd = trades >= 2 ? std(s.pnls) : 0;
+      const winRateLocal = trades ? s.wins / trades : 0;
+
+      const worst = trades ? Math.min(...s.pnls) : 0;
+      const best = trades ? Math.max(...s.pnls) : 0;
+
+      // Tail concentration proxy per symbol (how much of total loss is from worst 3)
+      const lossesAbs = s.pnls
+        .filter((x) => x < 0)
+        .reduce((a, x) => a + Math.abs(x), 0);
+      const worst3Abs = [...s.pnls]
+        .sort((a, b) => a - b)
+        .slice(0, 3)
+        .filter((x) => x < 0)
+        .reduce((a, x) => a + Math.abs(x), 0);
+
+      const tailConcentrationLocal = lossesAbs > 0 ? worst3Abs / lossesAbs : 0;
+
+      return {
+        symbol,
+        trades,
+        totalNetProfit: s.total,
+        avgPnl: avg,
+        winRate: winRateLocal, // 0..1
+        stdPnl: sd,
+        bestTrade: best,
+        worstTrade: worst,
+        tailConcentration: tailConcentrationLocal, // 0..1
+      };
+    })
+    // Sort: highest total profit first (good for "Top symbol" scenarios)
+    .sort((a, b) => b.totalNetProfit - a.totalNetProfit);
+
   const worstTrades = [...tradesWithMeta]
     .sort((a, b) => a.pnl - b.pnl)
     .slice(0, 3);
@@ -1399,25 +1465,16 @@ export function computeRiskSummary(
   };
 
   // -------------------------
-  // NEW v1: Root Cause Engine + Projection + Optimized Plan
-  // (Backend only, UI comes later)
+  // NEW v1: Root Cause Engine + Projection (backend only)
   // -------------------------
 
-  // Expectancy proxy:
-  // If avgWin/avgLoss not reliable, fallback to mean pnl per trade.
-  const expectancyTotal =
-    pnlSeries.length > 0
-      ? mean(pnlSeries)
-      : num(core.avgWin ?? 0, 0) * (winRate || 0) +
-        num(core.avgLoss ?? 0, 0) * (1 - (winRate || 0));
+  // Expectancy (total) via edge stats (stable & interpretable)
+  const expectancyTotal = winRate * avgWin + (1 - winRate) * avgLoss;
 
-  const recentN = 20;
-  const recentSeries = pnlSeries.slice(-recentN);
-  const expectancyRecent = recentSeries.length
-    ? mean(recentSeries)
-    : expectancyTotal;
+  // Expectancy (recent) from already computed recentAvg (lastN trades)
+  const expectancyRecent = recentAvg;
 
-  // Edge stability: how stable is expectancy recently vs total (0..1, higher better)
+  // Edge stability proxy: how stable is recent expectancy relative to total
   const edgeStability =
     Math.abs(expectancyTotal) > 0
       ? Math.max(
@@ -1431,58 +1488,42 @@ export function computeRiskSummary(
         )
       : 0.5;
 
-  // Loss clustering: fraction of losses that happen in streaks (0..1, higher = more clustering)
-  let lossTrades = 0;
-  let clusteredLossTrades = 0;
-  let run = 0;
-  for (const x of pnlSeries) {
-    if (x < 0) {
-      lossTrades += 1;
-      run += 1;
-    } else {
-      if (run >= 2) clusteredLossTrades += run;
-      run = 0;
-    }
-  }
-  if (run >= 2) clusteredLossTrades += run;
-
+  // Loss clustering: use your streak info (simple proxy that works well)
   const lossClusteringIndex =
-    lossTrades > 0 ? clusteredLossTrades / lossTrades : 0;
+    maxLossStreak >= 6 ? 0.8 : maxLossStreak >= 3 ? 0.5 : 0.2;
 
-  // Risk consistency index: invert CV so higher = better (0..1)
+  // Risk consistency (invert CV so higher = better)
   const riskConsistencyIndex = Math.max(
     0,
     Math.min(1, 1 / (1 + riskInconsistencyCV)),
   );
 
-  // Size escalation detector (proxy):
-  // We don't have size fields everywhere yet, so we use "tail concentration" as escalation/outlier proxy.
-  const sizeEscalationDetector = Math.max(
-    0,
-    Math.min(1, tailConcentration), // higher = worse (we'll interpret in UI)
-  );
+  // Outlier/size escalation proxy (already computed)
+  const sizeEscalationDetector = Math.max(0, Math.min(1, tailConcentration));
 
   const rootCauseEngine = {
     expectancy: { total: expectancyTotal, recent: expectancyRecent },
     edgeStability, // 0..1
     lossClusteringIndex, // 0..1
     riskConsistencyIndex, // 0..1
-    sizeEscalationDetector, // 0..1 (proxy)
+    sizeEscalationDetector, // 0..1
+    recentN: lastN,
   };
 
   // Projection v1
-  // Trades to break-even ~ distance / max(positive expectancyRecent, small epsilon)
   const expForRecovery = Math.max(
     0.0001,
     expectancyRecent > 0 ? expectancyRecent : 0.0001,
   );
+
   const tradesToRecover =
     distanceToBreakeven > 0
       ? Math.ceil(distanceToBreakeven / expForRecovery)
       : 0;
 
-  // Risk of further DD (0..1): combine current DD pct + clustering + tail risk
   const ddPctNowSafe = Math.max(0, ddPctNow);
+
+  // Risk of further DD (0..1): current DD + clustering + tail risk
   const riskOfFurtherDD = Math.max(
     0,
     Math.min(
@@ -1491,65 +1532,20 @@ export function computeRiskSummary(
     ),
   );
 
-  // Simulation if risk reduced (half size): expectancy scales roughly linearly
-  const simHalfSizeExpectancy = expectancyRecent * 0.5;
-
   const projection = {
     tradesToRecover,
-    riskOfFurtherDD, // 0..1
-    simHalfSizeExpectancy,
-    recoverySpeedHint:
-      drawdownPeriods.length >= 2
-        ? `You had ${drawdownPeriods.length} DD phases. Median recovery depends on your setup quality.`
-        : "Not enough DD history for recovery-speed comparison yet.",
+    riskOfFurtherDD,
+    simHalfSizeExpectancy: expectancyRecent * 0.5,
   };
 
-  // Optimized action plan v1 (3 actions max)
-  // derived from top causes + policy + projection
-  const optimizedPlan = {
-    actions: [
-      {
-        key: "op-1",
-        title: bestMove.title,
-        steps: [
-          bestMove.detail,
-          `Follow today's policy: max ${policy.maxTradesToday} trades, size ${Math.round(policy.sizeMultiplier * 100)}%.`,
-        ],
-        why: "Highest-impact lever based on your biggest current risk driver.",
-        metric: "Current drawdown + loss streak",
-      },
-      {
-        key: "op-2",
-        title: "Stabilize expectancy (quality filter)",
-        steps: [
-          "Trade only A+ setups for the next 20 trades (no exceptions).",
-          `If you hit ${policy.maxDailyLoss} today: stop immediately.`,
-        ],
-        why: "Expectancy improves fastest when you remove marginal trades and protect downside.",
-        metric: "Expectancy (recent) + trades/day",
-      },
-      {
-        key: "op-3",
-        title: "Remove tail-risk (outlier loss cap)",
-        steps: [
-          "Never widen stop-loss after entry. One rule, always.",
-          "Cap single-trade loss: stop the setup at -1R (no re-entry).",
-        ],
-        why: "Tail losses usually create the big drawdowns. Reduce outliers first.",
-        metric: "Top-3 loss concentration",
-      },
-    ],
-    guardrails: [
-      `Hard daily stop: ${policy.maxDailyLoss}`,
-      `Cooldown: ${policy.cooldownMinutes}m after ${policy.cooldownAfterLosses} losses`,
-      `Max trades today: ${policy.maxTradesToday}`,
-    ],
-  };
+  const tradesBySymbol: Record<string, number[]> = {};
+  for (const [symbol, s] of symbolMap.entries()) {
+    tradesBySymbol[symbol] = s.pnls;
+  }
 
   return {
     equity: equityPoints,
 
-    // ✅ headline metrics now match Dashboard
     maxDrawdown: maxDD,
     maxDrawdownPct: maxDDPct,
     currentDrawdown,
@@ -1601,9 +1597,11 @@ export function computeRiskSummary(
 
     layer3,
 
+    tradesBySymbol,
+    symbolStats,
+
     rootCauseEngine,
     projection,
-    optimizedPlan,
 
     daily: dailyStats,
   };

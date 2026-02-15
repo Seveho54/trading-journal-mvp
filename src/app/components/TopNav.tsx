@@ -453,7 +453,7 @@ export function TopNav() {
           <div
             style={{
               fontWeight: 900,
-              fontSize: 16,
+              fontSize: 51,
               letterSpacing: 0.3,
             }}
           >
@@ -461,7 +461,7 @@ export function TopNav() {
           </div>
           <div
             style={{
-              fontSize: 11,
+              fontSize: 16,
               opacity: 0.6,
               fontWeight: 600,
             }}

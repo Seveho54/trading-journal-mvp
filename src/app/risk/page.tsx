@@ -23,6 +23,40 @@ import {
   MiniDrawdownChart,
 } from "./RiskUI";
 
+function MiniKPI({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(255,255,255,0.02)",
+        minWidth: 0,
+      }}
+    >
+      <div className="p-muted" style={{ fontSize: 11, fontWeight: 900 }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 4, fontWeight: 1000, fontSize: 14 }}>
+        {value}
+      </div>
+      {hint ? (
+        <div className="p-muted" style={{ marginTop: 3, fontSize: 11 }}>
+          {hint}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function RiskPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -62,6 +96,8 @@ export default function RiskPage() {
   const outliers = layer3?.outliers ?? null;
   const consistency = layer3?.consistency ?? null;
   const [tab, setTab] = useState<RiskTabKey>("diagnosis");
+  const rce = (risk as any)?.rootCauseEngine ?? null;
+  const proj = (risk as any)?.projection ?? null;
 
   return (
     <main
@@ -1042,6 +1078,97 @@ export default function RiskPage() {
                     </div>
                   </div>
                 </div>
+                {/* Root Cause Engine: ONE ROW */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ gridColumn: "span 3" }}>
+                    <MiniKPI
+                      label="Expectancy (recent)"
+                      value={
+                        rce
+                          ? fmtMoneyLike(rce.expectancy?.recent ?? 0, ccy)
+                          : "—"
+                      }
+                      hint={rce ? `last ${rce.recentN ?? 20} trades` : null}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 3" }}>
+                    <MiniKPI
+                      label="Edge stability"
+                      value={rce ? fmtPctOrDash(rce.edgeStability) : "—"}
+                      hint="0–100% (higher=better)"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 2" }}>
+                    <MiniKPI
+                      label="Loss clustering"
+                      value={rce ? fmtPctOrDash(rce.lossClusteringIndex) : "—"}
+                      hint="streak pressure"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 2" }}>
+                    <MiniKPI
+                      label="Risk consistency"
+                      value={rce ? fmtPctOrDash(rce.riskConsistencyIndex) : "—"}
+                      hint="CV inverted"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 2" }}>
+                    <MiniKPI
+                      label="Tail risk"
+                      value={
+                        rce ? fmtPctOrDash(rce.sizeEscalationDetector) : "—"
+                      }
+                      hint="outlier losses"
+                    />
+                  </div>
+                </div>
+
+                {/* Projection row (compact) */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ gridColumn: "span 4" }}>
+                    <MiniKPI
+                      label="Trades to break-even"
+                      value={proj ? (proj.tradesToRecover ?? 0) : "—"}
+                      hint="rough estimate"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 4" }}>
+                    <MiniKPI
+                      label="Risk of further DD"
+                      value={proj ? fmtPctOrDash(proj.riskOfFurtherDD) : "—"}
+                      hint="0–100% heuristic"
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "span 4" }}>
+                    <MiniKPI
+                      label="Half-size expectancy"
+                      value={
+                        proj
+                          ? fmtMoneyLike(proj.simHalfSizeExpectancy ?? 0, ccy)
+                          : "—"
+                      }
+                      hint="if you cut size 50%"
+                    />
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -1221,6 +1348,65 @@ export default function RiskPage() {
                           ))}
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* --- Recovery & Projection (compact) --- */}
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <div style={{ fontWeight: 1000, fontSize: 14 }}>
+                    Recovery & Projection
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(12, 1fr)",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ gridColumn: "span 4" }}>
+                      <MiniKPI
+                        label="Trades needed to recover"
+                        value={proj ? (proj.tradesToRecover ?? 0) : "—"}
+                        hint="rough estimate"
+                      />
+                    </div>
+
+                    <div style={{ gridColumn: "span 4" }}>
+                      <MiniKPI
+                        label="Risk of further DD"
+                        value={proj ? fmtPctOrDash(proj.riskOfFurtherDD) : "—"}
+                        hint="0–100% heuristic"
+                      />
+                    </div>
+
+                    <div style={{ gridColumn: "span 4" }}>
+                      <MiniKPI
+                        label="Simulation if risk reduced"
+                        value={
+                          proj
+                            ? fmtMoneyLike(proj.simHalfSizeExpectancy ?? 0, ccy)
+                            : "—"
+                        }
+                        hint="expectancy @ 50% size"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Recovery speed vs historical (compact text line) */}
+                  <div
+                    className="p-muted"
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.02)",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <b>Recovery speed vs historical:</b>{" "}
+                    {proj?.recoverySpeedHint ? proj.recoverySpeedHint : "—"}
                   </div>
                 </div>
 
