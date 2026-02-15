@@ -220,6 +220,32 @@ function getByDayPnl(d: AnyObj) {
   return num(d?.totalNetProfit ?? 0, 0);
 }
 
+type DailyPoint = {
+  day: string; // YYYY-MM-DD
+  pnl: number; // totalNetProfit of the day
+  tradesCount?: number; // optional if available
+};
+
+function buildDailyPoints(byDay: AnyObj[]): DailyPoint[] {
+  return [...(byDay ?? [])]
+    .filter((d) => d?.day)
+    .sort((a, b) => String(a.day).localeCompare(String(b.day)))
+    .map((d) => ({
+      day: String(d.day),
+      pnl: num(d?.totalNetProfit ?? 0, 0),
+      tradesCount: Number.isFinite(num(d?.trades ?? d?.positions ?? NaN, NaN))
+        ? num(d?.trades ?? d?.positions, 0)
+        : undefined,
+    }));
+}
+
+export type RiskAlert = {
+  key: string;
+  severity: "INFO" | "WARN" | "CRITICAL";
+  title: string;
+  detail: string;
+};
+
 export function computeRiskSummary(
   input: { positions: AnyObj[]; trades: AnyObj[]; byDayPositions?: AnyObj[] },
   opts?: { startEquity?: number },
@@ -229,6 +255,7 @@ export function computeRiskSummary(
   const positions = Array.isArray(input.positions) ? input.positions : [];
   const trades = Array.isArray(input.trades) ? input.trades : [];
   const byDay = Array.isArray(input.byDayPositions) ? input.byDayPositions : [];
+  const daily = buildDailyPoints(byDay);
 
   // ✅ 0) Core KPIs EXACTLY like Dashboard
   // (This is the most important step to eliminate mismatches.)
@@ -304,6 +331,33 @@ export function computeRiskSummary(
   const requiredReturnPct =
     lastEquity !== 0 ? distanceToBreakeven / Math.abs(lastEquity) : null;
 
+  const dailyPnls = daily.map((d) => d.pnl);
+  const worstDayPnl = dailyPnls.length ? Math.min(...dailyPnls) : 0;
+  const bestDayPnl = dailyPnls.length ? Math.max(...dailyPnls) : 0;
+
+  const maxDailyLoss = worstDayPnl; // negative number (or 0)
+
+  let lossDaysStreak = 0;
+  let maxLossDaysStreak = 0;
+  let curDays = 0;
+
+  for (const d of daily) {
+    if (d.pnl < 0) {
+      curDays += 1;
+      if (curDays > maxLossDaysStreak) maxLossDaysStreak = curDays;
+    } else {
+      curDays = 0;
+    }
+  }
+
+  // current losing-days streak from the end:
+  let endDays = 0;
+  for (let i = daily.length - 1; i >= 0; i--) {
+    if (daily[i].pnl < 0) endDays++;
+    else break;
+  }
+  lossDaysStreak = endDays;
+
   // -------------------------
   // 2) Win/Loss stats (MATCH Dashboard by using core)
   // -------------------------
@@ -320,9 +374,16 @@ export function computeRiskSummary(
   // 3) Loss streak (chronological positions by close time)
   // -------------------------
   const posSorted = [...positions].sort((a: AnyObj, b: AnyObj) => {
-    const ta = new Date(getPosCloseTime(a) ?? 0).getTime();
-    const tb = new Date(getPosCloseTime(b) ?? 0).getTime();
-    return ta - tb;
+    const taRaw = getPosCloseTime(a);
+    const tbRaw = getPosCloseTime(b);
+
+    const ta = new Date(taRaw ?? 0).getTime();
+    const tb = new Date(tbRaw ?? 0).getTime();
+
+    const A = Number.isFinite(ta) ? ta : 0;
+    const B = Number.isFinite(tb) ? tb : 0;
+
+    return A - B;
   });
 
   const pnlSeries = posSorted.length
@@ -423,7 +484,7 @@ export function computeRiskSummary(
 
   type RiskMode = "NORMAL" | "CAUTION" | "RECOVERY" | "CRITICAL";
 
-  const ddPctForMode = currentDrawdownPct ?? 0;
+  const ddPctForMode = equityMaxDDPct ?? currentDrawdownPct ?? 0;
 
   let riskMode: RiskMode = "NORMAL";
 
@@ -686,5 +747,13 @@ export function computeRiskSummary(
     requiredReturnPct,
     riskMode,
     tradingAllowed,
+
+    daily: {
+      worstDayPnl,
+      bestDayPnl,
+      maxDailyLoss,
+      lossDaysStreak,
+      maxLossDaysStreak,
+    },
   };
 }
