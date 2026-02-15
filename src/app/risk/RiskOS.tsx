@@ -17,21 +17,34 @@ export function RiskOS({
     <div
       className="card"
       style={{
-        marginTop: 12,
+        marginTop: 0,
         borderRadius: 18,
         overflow: "hidden",
         border: "1px solid var(--border)",
         background: "rgba(255,255,255,0.02)",
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0, // wichtig für flex child sizing
       }}
     >
       {/* Screen */}
-      <div style={{ padding: 16, minHeight: 440 }}>{children}</div>
+      <div
+        style={{
+          padding: 12,
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden", // kein Scroll im Screen
+        }}
+      >
+        {children}
+      </div>
 
       {/* Bottom Nav */}
       <div
         style={{
           borderTop: "1px solid rgba(255,255,255,0.08)",
-          padding: 10,
+          padding: 8,
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
           gap: 8,
