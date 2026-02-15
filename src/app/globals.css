@@ -414,6 +414,29 @@ button:disabled {
     background: rgba(0, 212, 255, 0.09) !important;
 }
 
+/* Accordion polish */
+.tv-disclosure-summary::-webkit-details-marker {
+    display: none;
+}
+.tv-disclosure-summary::marker {
+    content: "";
+}
+
+.tv-disclosure[open] .tv-chevron {
+    transform: rotate(180deg);
+}
+.tv-chevron {
+    transition: transform 160ms ease;
+}
+
+/* Responsive grid helpers */
+@media (max-width: 860px) {
+    .tv-col-5,
+    .tv-col-7 {
+        grid-column: span 12 !important;
+    }
+}
+
 /* =========================================================
    REDUCE MOTION
 ========================================================= */

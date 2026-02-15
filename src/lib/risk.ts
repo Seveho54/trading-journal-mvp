@@ -215,6 +215,10 @@ function getPosCloseTime(p: AnyObj) {
   );
 }
 
+function getPosSymbol(p: AnyObj) {
+  return p?.symbol ?? p?.market ?? p?.pair ?? p?.instrument ?? p?.ticker ?? "—";
+}
+
 function getByDayPnl(d: AnyObj) {
   // Dashboard equityRawPoints uses d.totalNetProfit
   return num(d?.totalNetProfit ?? 0, 0);
@@ -463,6 +467,14 @@ export function computeRiskSummary(
         ),
       );
 
+  // -------------------------
+  // 10) Layer 3: Deep dive signals
+  // -------------------------
+
+  // “Spiral days” = days with many trades AND negative day pnl (if daily exists)
+  const dailyMap = new Map<string, number>();
+  for (const d of daily) dailyMap.set(d.day, d.pnl);
+
   let currentLossStreak = 0;
   let maxLossStreak = 0;
   let cur = 0;
@@ -542,6 +554,111 @@ export function computeRiskSummary(
   const absMean = mean(absPnL);
   const absStd = std(absPnL);
   const riskInconsistencyCV = absMean > 0 ? absStd / absMean : 0;
+
+  // -------------------------
+  // 7.5) Layer 3 (Ebene 3) — Deep Dive blocks
+  // -------------------------
+
+  // A) Trades with meta (date/symbol/pnl) — based on positions (cleanest)
+  const tradesWithMeta = posSorted.map((p) => ({
+    t: safeDateKey(getPosCloseTime(p)) ?? "—",
+    pnl: getPosNet(p),
+    symbol: getPosSymbol(p),
+  }));
+
+  const worstTrades = [...tradesWithMeta]
+    .sort((a, b) => a.pnl - b.pnl)
+    .slice(0, 3);
+
+  const bestTrades = [...tradesWithMeta]
+    .sort((a, b) => b.pnl - a.pnl)
+    .slice(0, 3);
+
+  // How concentrated are losses in worst 3?
+  const totalLossAbs = tradesWithMeta
+    .filter((x) => x.pnl < 0)
+    .reduce((a, x) => a + Math.abs(x.pnl), 0);
+
+  const worst3Abs = worstTrades
+    .filter((x) => x.pnl < 0)
+    .reduce((a, x) => a + Math.abs(x.pnl), 0);
+
+  const tailConcentration = totalLossAbs > 0 ? worst3Abs / totalLossAbs : 0;
+
+  // B) Trades/day distribution
+  // Prefer byDayPositions if it includes tradesCount, else fallback to counting positions by close day.
+  const tradesPerDayMap = new Map<string, number>();
+
+  // 1) use daily.tradesCount if available
+  for (const d of daily) {
+    if (d?.day && typeof d.tradesCount === "number") {
+      tradesPerDayMap.set(d.day, d.tradesCount);
+    }
+  }
+
+  // 2) fallback: count positions by close day (only fill missing)
+  if (tradesPerDayMap.size === 0) {
+    for (const p of posSorted) {
+      const day = safeDateKey(getPosCloseTime(p));
+      if (!day) continue;
+      tradesPerDayMap.set(day, (tradesPerDayMap.get(day) ?? 0) + 1);
+    }
+  }
+
+  const tradesPerDayArr = Array.from(tradesPerDayMap.entries())
+    .map(([day, count]) => ({ day, count }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+
+  const tradesPerDayMax = tradesPerDayArr.length
+    ? Math.max(...tradesPerDayArr.map((x) => x.count))
+    : 0;
+
+  // Spiral days = many trades + negative daily pnl
+  const dailyPnlMap = new Map<string, number>();
+  for (const d of daily) dailyPnlMap.set(d.day, d.pnl);
+
+  const spiralDays = tradesPerDayArr
+    .filter((x) => (dailyPnlMap.get(x.day) ?? 0) < 0 && x.count >= 8)
+    .slice(-10);
+
+  // C) Recent stability (last N trades)
+  const lastN = 20;
+  const recent = tradesWithMeta.slice(-lastN);
+  const recentPnls = recent.map((x) => x.pnl);
+
+  const recentAvg = mean(recentPnls);
+  const recentStd = std(recentPnls);
+  const recentStability = recentStd > 0 ? Math.abs(recentAvg) / recentStd : 0; // higher = more stable
+
+  // Flags (simple)
+  const tailRiskFlag = tailConcentration >= 0.45;
+  const overtradingFlag = tradesPerDayAvg >= 8 || tradesPerDayMax >= 15;
+  const inconsistencyFlag = riskInconsistencyCV >= 1.0;
+
+  // Pack for UI
+  const layer3 = {
+    behavior: {
+      tradesPerDayAvg,
+      tradesPerDayMax,
+      activeDays: tradesPerDayArr.length,
+      spiralDays, // {day,count}[]
+      overtradingFlag,
+    },
+    outliers: {
+      worstTrades, // [{t,pnl,symbol}]
+      bestTrades, // [{t,pnl,symbol}]
+      tailConcentration, // 0..1
+      tailRiskFlag,
+    },
+    consistency: {
+      riskInconsistencyCV,
+      inconsistencyFlag,
+      recentStability,
+      recentAvg,
+      recentStd,
+      lastN,
+    },
+  };
 
   type RiskMode = "NORMAL" | "CAUTION" | "RECOVERY" | "CRITICAL";
 
@@ -1328,6 +1445,8 @@ export function computeRiskSummary(
     policy,
 
     checklist,
+
+    layer3,
 
     daily: dailyStats,
   };
