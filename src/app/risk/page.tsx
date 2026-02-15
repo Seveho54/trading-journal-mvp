@@ -488,6 +488,7 @@ export default function RiskPage() {
           </Section>
 
           {/* ===== 2) At a glance (moved down) ===== */}
+          {/*
           <Section
             title="At a glance"
             subtitle="Core stability + drawdown + edge metrics. Same values as before — just organized."
@@ -618,7 +619,6 @@ export default function RiskPage() {
               </div>
             </div>
 
-            {/* Charts directly under KPIs (same charts, better placement) */}
             <div
               style={{
                 marginTop: 12,
@@ -630,6 +630,142 @@ export default function RiskPage() {
               <MiniDrawdownChart points={risk?.equity ?? []} />
               <MiniEquityChart points={risk?.equity ?? []} />
             </div>
+        </Section>     */}
+
+          {/* ===== 3) Root Cause Intelligence ===== */}
+          <Section
+            title="Root Cause Intelligence"
+            subtitle="The system-level causes behind your risk — and the fastest fixes."
+          >
+            {((risk as any)?.rootCauses ?? []).length ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(12, 1fr)",
+                  gap: 12,
+                }}
+              >
+                {/* Left: causes */}
+                <div style={{ gridColumn: "span 5" }}>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {(risk as any).rootCauses
+                      .slice(0, 3)
+                      .map((c: any, idx: number) => (
+                        <div
+                          key={c.key ?? idx}
+                          style={{
+                            padding: "12px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ fontWeight: 1000 }}>
+                              <span
+                                className="p-muted"
+                                style={{ fontSize: 12, marginRight: 8 }}
+                              >
+                                #{idx + 1}
+                              </span>
+                              {c.title}
+                            </div>
+                            {sevPill(c.severity)}
+                          </div>
+
+                          <div
+                            className="p-muted"
+                            style={{
+                              marginTop: 8,
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            <div>
+                              <b>Evidence:</b> {c.evidence}
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <b>Impact:</b> {c.impactHint}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Right: countermeasures */}
+                <div style={{ gridColumn: "span 7" }}>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {((risk as any)?.countermeasures ?? [])
+                      .slice(0, 3)
+                      .map((m: any, idx: number) => (
+                        <div
+                          key={m.key ?? idx}
+                          style={{
+                            padding: "12px 12px",
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.02)",
+                          }}
+                        >
+                          <div style={{ fontWeight: 1000 }}>{m.title}</div>
+
+                          <ul
+                            style={{
+                              marginTop: 8,
+                              paddingLeft: 18,
+                              lineHeight: 1.55,
+                            }}
+                          >
+                            {(m.steps ?? [])
+                              .slice(0, 4)
+                              .map((s: string, i: number) => (
+                                <li
+                                  key={i}
+                                  className="p-muted"
+                                  style={{ fontSize: 12 }}
+                                >
+                                  {s}
+                                </li>
+                              ))}
+                          </ul>
+
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 8, fontSize: 12 }}
+                          >
+                            <b>Metric to watch:</b> {m.metricToWatch}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="card"
+                style={{
+                  padding: 14,
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.02)",
+                }}
+              >
+                <div style={{ fontWeight: 1000 }}>
+                  No major root causes detected
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  Your current risk triggers are low. Keep sizing stable and
+                  protect green days.
+                </div>
+              </div>
+            )}
           </Section>
 
           {/* ===== 4) Plan ===== */}

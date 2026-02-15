@@ -271,8 +271,9 @@ export type RootCause = {
   impactHint: string;
 };
 
-export type Countermeasure = {
+type Countermeasure = {
   key: string;
+  causeKey?: string; // <— neu
   title: string;
   steps: string[];
   metricToWatch: string;
@@ -1202,6 +1203,7 @@ export function computeRiskSummary(
         stopDaily != null ? `-${stopDaily.toFixed(2)}` : "a hard daily stop";
       countermeasures.push({
         key: "cm-dd",
+        causeKey: "ddPressure",
         title: "DD Recovery Protocol (7 days)",
         steps: [
           `Set max daily loss to ${stopDailyStr} and STOP immediately when hit.`,
@@ -1215,6 +1217,7 @@ export function computeRiskSummary(
     if (c.key === "streak") {
       countermeasures.push({
         key: "cm-streak",
+        causeKey: "streak",
         title: "Streak Breaker Rule",
         steps: [
           `After ${streakStop} consecutive losses: stop trading for the day.`,
@@ -1228,6 +1231,7 @@ export function computeRiskSummary(
     if (c.key === "inconsistency") {
       countermeasures.push({
         key: "cm-inc",
+        causeKey: "inconsistency",
         title: "Tail-risk reduction (stop the outliers)",
         steps: [
           "Fix 1 thing: never move stop-loss further away after entry.",
@@ -1242,6 +1246,7 @@ export function computeRiskSummary(
       const cap = tradesPerDayAvg > 10 ? 5 : 3;
       countermeasures.push({
         key: "cm-over",
+        causeKey: "overtrading",
         title: "Overtrading cap (quality filter)",
         steps: [
           `Hard cap: max ${cap} trades/day.`,
