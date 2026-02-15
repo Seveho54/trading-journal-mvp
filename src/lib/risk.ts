@@ -633,6 +633,130 @@ export function computeRiskSummary(
     // Sort: highest total profit first (good for "Top symbol" scenarios)
     .sort((a, b) => b.totalNetProfit - a.totalNetProfit);
 
+  const tradesBySymbol: Record<string, number[]> = {};
+  for (const [symbol, s] of symbolMap.entries()) {
+    tradesBySymbol[symbol] = s.pnls;
+  }
+
+  // -------------------------
+  // What-If / Forecast Scenarios (v1)
+  // -------------------------
+  const forecastHorizonTrades = 30;
+  const recentK = 10;
+
+  function lastNArr(arr: number[], n: number) {
+    if (!arr.length) return [];
+    return arr.slice(Math.max(0, arr.length - n));
+  }
+
+  function repeatToLen(base: number[], len: number) {
+    if (!base.length) return Array(len).fill(0);
+    const out: number[] = [];
+    while (out.length < len) out.push(...base);
+    return out.slice(0, len);
+  }
+
+  function buildTradeIndexCurve(startEq: number, pnls: number[]) {
+    let eq = startEq;
+    return pnls.map((pnl, i) => {
+      eq += pnl;
+      return { t: `T+${i + 1}`, equity: eq };
+    });
+  }
+
+  const baselineSeq = repeatToLen(
+    lastNArr(pnlSeries, recentK),
+    forecastHorizonTrades,
+  );
+
+  // top + worst symbols by totalNetProfit
+  const topSymbol = symbolStats?.[0]?.symbol ?? null;
+
+  const worstSymbol = symbolStats?.length
+    ? [...symbolStats].sort((a, b) => a.totalNetProfit - b.totalNetProfit)[0]
+        .symbol
+    : null;
+
+  const top2Symbols = symbolStats?.slice(0, 2).map((x) => x.symbol) ?? [];
+
+  function seqOnlySymbols(symbols: string[]) {
+    const pool: number[] = [];
+    for (const s of symbols) pool.push(...(tradesBySymbol[s] ?? []));
+    return repeatToLen(lastNArr(pool, recentK), forecastHorizonTrades);
+  }
+
+  function seqExcludeSymbol(exclude: string | null) {
+    if (!exclude) return baselineSeq;
+    const pool: number[] = [];
+    for (const [sym, pnls] of Object.entries(tradesBySymbol)) {
+      if (sym === exclude) continue;
+      pool.push(...pnls);
+    }
+    return repeatToLen(lastNArr(pool, recentK), forecastHorizonTrades);
+  }
+
+  const scenarios = [
+    {
+      key: "baseline",
+      label: "Keep last 10 trades",
+      why: "Forecast assumes you repeat your most recent behavior.",
+      pnls: baselineSeq,
+    },
+    {
+      key: "risk_half",
+      label: "Reduce risk (50%)",
+      why: "Same behavior, but position size is cut in half.",
+      pnls: baselineSeq.map((x) => x * 0.5),
+    },
+    {
+      key: "only_top_symbol",
+      label: topSymbol ? `Only trade ${topSymbol}` : "Only trade top symbol",
+      why: "Focus only on your historically best-performing symbol.",
+      pnls: topSymbol ? seqOnlySymbols([topSymbol]) : baselineSeq,
+    },
+    {
+      key: "top2_symbols",
+      label: top2Symbols.length
+        ? `Only trade ${top2Symbols.join(" + ")}`
+        : "Only trade top 2 symbols",
+      why: "Trade only your top 2 symbols to reduce noise and improve edge focus.",
+      pnls: top2Symbols.length ? seqOnlySymbols(top2Symbols) : baselineSeq,
+    },
+    {
+      key: "exclude_worst_symbol",
+      label: worstSymbol ? `Exclude ${worstSymbol}` : "Exclude worst symbol",
+      why: "Remove the symbol that historically hurts your PnL the most.",
+      pnls: worstSymbol ? seqExcludeSymbol(worstSymbol) : baselineSeq,
+    },
+  ];
+
+  const forecastStartEquity = equityArr.length
+    ? equityArr[equityArr.length - 1]
+    : startEquity;
+
+  const scenarioForecasts = scenarios.map((s) => {
+    const curve = buildTradeIndexCurve(forecastStartEquity, s.pnls);
+    const endEquity = curve.length
+      ? curve[curve.length - 1].equity
+      : forecastStartEquity;
+    const delta = endEquity - forecastStartEquity;
+
+    const eqTmp = curve.map((p) => p.equity);
+    const { maxDD: ddAbs, maxDDPct: ddPctLocal } = computeMaxDrawdown(eqTmp);
+
+    return {
+      key: s.key,
+      label: s.label,
+      why: s.why,
+      startEquity: forecastStartEquity,
+      endEquity,
+      delta,
+      maxDrawdown: ddAbs,
+      maxDrawdownPct: ddPctLocal,
+      curve,
+    };
+  });
+
   const worstTrades = [...tradesWithMeta]
     .sort((a, b) => a.pnl - b.pnl)
     .slice(0, 3);
@@ -1538,11 +1662,6 @@ export function computeRiskSummary(
     simHalfSizeExpectancy: expectancyRecent * 0.5,
   };
 
-  const tradesBySymbol: Record<string, number[]> = {};
-  for (const [symbol, s] of symbolMap.entries()) {
-    tradesBySymbol[symbol] = s.pnls;
-  }
-
   return {
     equity: equityPoints,
 
@@ -1599,6 +1718,8 @@ export function computeRiskSummary(
 
     tradesBySymbol,
     symbolStats,
+
+    scenarioForecasts,
 
     rootCauseEngine,
     projection,
