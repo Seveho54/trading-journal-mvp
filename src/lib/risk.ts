@@ -411,6 +411,14 @@ export function computeRiskSummary(
   }
   lossDaysStreak = endDays;
 
+  const dailyStats = {
+    worstDayPnl,
+    bestDayPnl,
+    maxDailyLoss,
+    lossDaysStreak,
+    maxLossDaysStreak,
+  };
+
   // -------------------------
   // 2) Win/Loss stats (MATCH Dashboard by using core)
   // -------------------------
@@ -1191,7 +1199,7 @@ export function computeRiskSummary(
   // Ebene 2.5 — Next Session Checklist (Guided)
   // -------------------------
   const ddAbsNow = Math.abs(currentDrawdown ?? 0);
-  const worstDay = daily?.worstDayPnl ?? 0;
+  const worstDay = dailyStats.worstDayPnl ?? 0;
 
   const checklistDo: string[] = [];
   const checklistDont: string[] = [];
@@ -1321,12 +1329,6 @@ export function computeRiskSummary(
 
     checklist,
 
-    daily: {
-      worstDayPnl,
-      bestDayPnl,
-      maxDailyLoss,
-      lossDaysStreak,
-      maxLossDaysStreak,
-    },
+    daily: dailyStats,
   };
 }
