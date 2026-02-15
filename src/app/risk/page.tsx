@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { computeRiskSummary } from "@/lib/risk";
+import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 
 function fmtMoney2(n: number) {
   return new Intl.NumberFormat("en-US", {
@@ -159,6 +160,17 @@ function MiniEquityChart({
 
 function fmtPct(x: number) {
   return `${(x * 100).toFixed(1)}%`;
+}
+
+function fmtMoneyLike(x: number, ccy?: string) {
+  const sign = x > 0 ? "+" : "";
+  const v = `${sign}${x.toFixed(2)}`;
+  return ccy ? `${v} ${ccy}` : v;
+}
+
+function fmtPctOrDash(x: number | null | undefined) {
+  if (x == null || !Number.isFinite(x)) return "—";
+  return fmtPct(x);
 }
 
 function fmtNum(x: number) {
@@ -526,6 +538,7 @@ function sevPill(sev: "LOW" | "MED" | "HIGH") {
 export default function RiskPage() {
   const router = useRouter();
   const { data } = useTradeSession();
+  const ccy = (data as any)?.ccy ?? "USDT";
 
   const hasSession = !!data?.rowsParsed && (data.rowsParsed ?? 0) > 0;
 
@@ -579,6 +592,27 @@ export default function RiskPage() {
             {hasSession && risk ? (
               <ScoreBadge score={risk.stabilityScore ?? 0} />
             ) : null}
+
+            <span
+              className="badge"
+              style={{
+                borderColor:
+                  risk?.riskMode === "CRITICAL"
+                    ? "rgba(251,113,133,0.35)"
+                    : risk?.riskMode === "RECOVERY"
+                      ? "rgba(251,191,36,0.35)"
+                      : "rgba(54,211,153,0.25)",
+                background:
+                  risk?.riskMode === "CRITICAL"
+                    ? "rgba(251,113,133,0.12)"
+                    : risk?.riskMode === "RECOVERY"
+                      ? "rgba(251,191,36,0.10)"
+                      : "rgba(54,211,153,0.10)",
+              }}
+            >
+              Mode: <b>{risk?.riskMode ?? "—"}</b> · Trading{" "}
+              <b>{risk?.tradingAllowed ?? "—"}</b>
+            </span>
 
             {!hasSession ? (
               <button
@@ -645,14 +679,16 @@ export default function RiskPage() {
                           : "var(--text)",
                     }}
                   >
-                    {fmtNum(risk?.maxDrawdown ?? 0)}
+                    {fmtMoney(risk?.maxDrawdown ?? 0)}
                   </span>
                 }
                 sub={
-                  risk?.maxDrawdownPct == null ? (
-                    "pct not available"
-                  ) : (
+                  risk?.maxDrawdownPct != null ? (
                     <>≈ {fmtPct(risk.maxDrawdownPct)} of peak</>
+                  ) : risk?.currentDrawdownPct != null ? (
+                    <>current DD ≈ {fmtPct(risk.currentDrawdownPct)}</>
+                  ) : (
+                    "—"
                   )
                 }
               />
@@ -664,9 +700,9 @@ export default function RiskPage() {
                 value={fmtPct(risk?.winRate ?? 0)}
                 sub={
                   <>
-                    Avg win <b>{fmtNum(risk?.avgWin ?? 0)}</b> • Avg loss{" "}
+                    Avg win <b>{fmtMoney(risk?.avgWin ?? 0)}</b> • Avg loss{" "}
                     <b style={{ color: "#ff6b6b" }}>
-                      {fmtNum(risk?.avgLoss ?? 0)}
+                      {fmtMoney(risk?.avgLoss ?? 0)}
                     </b>
                   </>
                 }
@@ -688,7 +724,7 @@ export default function RiskPage() {
                             : "var(--text)",
                       }}
                     >
-                      {fmtNum(risk?.currentDrawdown ?? 0)}
+                      {fmtMoney(risk?.currentDrawdown ?? 0)}
                     </b>
                   </>
                 }
@@ -728,10 +764,23 @@ export default function RiskPage() {
                       color: (risk?.totalPnl ?? 0) >= 0 ? "#36d399" : "#ff6b6b",
                     }}
                   >
-                    {fmtNum(risk?.totalPnl ?? 0)}
+                    {fmtMoney(risk?.totalPnl ?? 0)}
                   </span>
                 }
                 sub="sum of positions/trades"
+              />
+            </div>
+
+            <div style={{ gridColumn: "span 4" }}>
+              <StatCard
+                title="Distance to Break-even"
+                value={fmtMoneyLike(risk?.distanceToBreakeven ?? 0, ccy)}
+                sub={
+                  <>
+                    Required return{" "}
+                    <b>{fmtPctOrDash(risk?.requiredReturnPct ?? null)}</b>
+                  </>
+                }
               />
             </div>
           </div>
@@ -1044,7 +1093,7 @@ export default function RiskPage() {
                 >
                   Started: <b>{active.start}</b> • Trough:{" "}
                   <b>{active.trough}</b> • Depth:{" "}
-                  <b style={{ color: "#ff6b6b" }}>{fmtNum(active.depth)}</b>{" "}
+                  <b style={{ color: "#ff6b6b" }}>{fmtMoney(active.depth)}</b>{" "}
                   {active.depthPct != null ? (
                     <>
                       (≈{" "}
@@ -1087,7 +1136,7 @@ export default function RiskPage() {
                       </div>
                       <div className="p-muted">
                         Trough: <b>{p.trough}</b> • Depth:{" "}
-                        <b style={{ color: "#ff6b6b" }}>{fmtNum(p.depth)}</b>{" "}
+                        <b style={{ color: "#ff6b6b" }}>{fmtMoney(p.depth)}</b>{" "}
                         {p.depthPct != null ? (
                           <>
                             (≈{" "}

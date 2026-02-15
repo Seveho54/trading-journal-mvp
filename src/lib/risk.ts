@@ -1,4 +1,8 @@
 // src/lib/risk.ts
+// ✅ Goal: make Risk metrics match Dashboard (buildPositionStats + byDayPositions.totalNetProfit)
+// ✅ Minimal change surface: keep your public API + return shape, only fix inputs + normalization
+
+import { buildPositionStats } from "@/core/analytics/positionStats";
 
 type AnyObj = Record<string, any>;
 
@@ -31,9 +35,16 @@ function std(arr: number[]) {
   return Math.sqrt(v);
 }
 
+/**
+ * Drawdown on an equity array.
+ * IMPORTANT: pct only makes sense if peak > 0. If peak <= 0, we return null to avoid nonsense like 360%,
+ * which happens when peak equity is small/negative.
+ */
 function computeMaxDrawdown(equity: number[]) {
-  let peak = -Infinity;
-  let maxDD = 0; // negative number
+  if (!equity.length) return { maxDD: 0, maxDDPct: null as number | null };
+
+  let peak = equity[0];
+  let maxDD = 0; // negative number (or 0)
   let maxDDPct: number | null = null;
 
   for (let i = 0; i < equity.length; i++) {
@@ -44,8 +55,8 @@ function computeMaxDrawdown(equity: number[]) {
     if (dd < maxDD) {
       maxDD = dd;
 
-      // pct relative to peak (only if peak != 0)
-      if (peak !== 0) maxDDPct = Math.abs(dd) / Math.abs(peak);
+      // pct relative to peak only if peak > 0
+      if (peak > 0) maxDDPct = Math.abs(dd) / peak;
       else maxDDPct = null;
     }
   }
@@ -56,18 +67,17 @@ function computeMaxDrawdown(equity: number[]) {
 type EquityPoint = { t: string; equity: number };
 
 export type DrawdownPeriod = {
-  start: string; // date when equity drops below peak
-  trough: string; // date of lowest equity within the DD
-  recovery: string | null; // date when equity reaches previous peak again (null if ongoing)
-  depth: number; // negative value (equity - peak)
-  depthPct: number | null; // abs(depth)/abs(peak) (null if peak=0)
-  durationDays: number; // start -> recovery (or start -> last point if ongoing)
-  timeToTroughDays: number; // start -> trough
-  recoveryDays: number | null; // trough -> recovery (null if ongoing)
+  start: string;
+  trough: string;
+  recovery: string | null;
+  depth: number;
+  depthPct: number | null;
+  durationDays: number;
+  timeToTroughDays: number;
+  recoveryDays: number | null;
 };
 
 function dayToMs(day: string) {
-  // safe parse for YYYY-MM-DD
   const d = new Date(day + "T00:00:00");
   return d.getTime();
 }
@@ -91,7 +101,6 @@ export function detectDrawdownPeriods(points: EquityPoint[]): DrawdownPeriod[] {
 
   let ddStart = "";
   let ddPeak = 0;
-  let ddPeakDate = "";
 
   let troughEquity = Infinity;
   let troughDate = "";
@@ -101,36 +110,30 @@ export function detectDrawdownPeriods(points: EquityPoint[]): DrawdownPeriod[] {
   for (let i = 1; i < points.length; i++) {
     const p = points[i];
 
-    // new peak resets state if not in drawdown
     if (!inDD && p.equity >= peak) {
       peak = p.equity;
       peakDate = p.t;
       continue;
     }
 
-    // start DD when equity goes below peak
     if (!inDD && p.equity < peak) {
       inDD = true;
       ddStart = p.t;
       ddPeak = peak;
-      ddPeakDate = peakDate;
 
       troughEquity = p.equity;
       troughDate = p.t;
     }
 
     if (inDD) {
-      // update trough
       if (p.equity < troughEquity) {
         troughEquity = p.equity;
         troughDate = p.t;
       }
 
-      // recovery: equity back to previous peak or higher
       if (p.equity >= ddPeak) {
         const depth = troughEquity - ddPeak; // negative
-        const depthPct =
-          ddPeak !== 0 ? Math.abs(depth) / Math.abs(ddPeak) : null;
+        const depthPct = ddPeak > 0 ? Math.abs(depth) / ddPeak : null;
 
         const durationDays = diffDays(ddStart, p.t);
         const timeToTroughDays = diffDays(ddStart, troughDate);
@@ -147,26 +150,22 @@ export function detectDrawdownPeriods(points: EquityPoint[]): DrawdownPeriod[] {
           recoveryDays,
         });
 
-        // exit DD and update peak to current point
         inDD = false;
         peak = p.equity;
         peakDate = p.t;
 
-        // reset
         ddStart = "";
         ddPeak = 0;
-        ddPeakDate = "";
         troughEquity = Infinity;
         troughDate = "";
       }
     }
   }
 
-  // if still in drawdown at end → ongoing period
   if (inDD) {
     const last = points[points.length - 1];
     const depth = troughEquity - ddPeak; // negative
-    const depthPct = ddPeak !== 0 ? Math.abs(depth) / Math.abs(ddPeak) : null;
+    const depthPct = ddPeak > 0 ? Math.abs(depth) / ddPeak : null;
 
     const durationDays = diffDays(ddStart, last.t);
     const timeToTroughDays = diffDays(ddStart, troughDate);
@@ -186,6 +185,41 @@ export function detectDrawdownPeriods(points: EquityPoint[]): DrawdownPeriod[] {
   return periods;
 }
 
+// -------------------------
+// Normalizers to match Dashboard
+// -------------------------
+function getPosNet(p: AnyObj) {
+  // Dashboard uses p.netProfit in multiple places (biggest win/loss)
+  return num(
+    p?.netProfit ??
+      p?.totalNetProfit ??
+      p?.netPnl ??
+      p?.pnl ??
+      p?.profit ??
+      p?.realizedPnl ??
+      p?.totalRealizedPnl ??
+      0,
+    0,
+  );
+}
+
+function getPosCloseTime(p: AnyObj) {
+  return (
+    p?.closeTime ??
+    p?.closeTimestamp ??
+    p?.closedAt ??
+    p?.exitTime ??
+    p?.time ??
+    p?.ts ??
+    null
+  );
+}
+
+function getByDayPnl(d: AnyObj) {
+  // Dashboard equityRawPoints uses d.totalNetProfit
+  return num(d?.totalNetProfit ?? 0, 0);
+}
+
 export function computeRiskSummary(
   input: { positions: AnyObj[]; trades: AnyObj[]; byDayPositions?: AnyObj[] },
   opts?: { startEquity?: number },
@@ -196,84 +230,39 @@ export function computeRiskSummary(
   const trades = Array.isArray(input.trades) ? input.trades : [];
   const byDay = Array.isArray(input.byDayPositions) ? input.byDayPositions : [];
 
+  // ✅ 0) Core KPIs EXACTLY like Dashboard
+  // (This is the most important step to eliminate mismatches.)
+  const core = buildPositionStats(positions as any);
+
   // -------------------------
-  // 1) Build daily equity points (BEST source = byDayPositions)
+  // 1) Build daily equity points (MATCH Dashboard)
   // -------------------------
-  let equityPoints: { t: string; equity: number }[] = [];
+  let equityPoints: EquityPoint[] = [];
 
   if (byDay.length > 0) {
-    // We expect each entry to have a "day" (or date) and a pnl field
-    const mapped = byDay
-      .map((d) => {
-        const t = safeDateKey(d.day ?? d.date ?? d.t ?? d.ts ?? d.time);
-        // try common fields
-        // try common fields (Bitget byDayPositions uses totalNetProfit / totalRealizedPnl)
-        const candidates = [
-          d.totalNetProfit,
-          d.totalRealizedPnl,
-          d.netPnl,
-          d.pnl,
-          d.totalPnl,
-          d.sumPnl,
-        ];
-
-        let pnl = 0;
-        for (const c of candidates) {
-          const v = num(c, NaN);
-          if (Number.isFinite(v)) {
-            pnl = v;
-            break;
-          }
-        }
-
-        return { t, pnl };
-      })
-      .filter((x) => !!x.t)
-      .sort((a, b) => String(a.t).localeCompare(String(b.t)));
+    const mapped = [...byDay]
+      .filter((d) => d?.day)
+      .sort((a, b) => String(a.day).localeCompare(String(b.day)))
+      .map((d) => ({
+        t: String(d.day),
+        pnl: getByDayPnl(d),
+      }));
 
     let eq = startEquity;
     equityPoints = mapped.map((m) => {
       eq += m.pnl;
-      return { t: String(m.t), equity: eq };
+      return { t: m.t, equity: eq };
     });
   } else {
-    // Fallback: build equity from positions sorted by close time (less ideal)
-    const mapped = positions
+    // Fallback: aggregate positions net by day (close date)
+    const mapped = [...positions]
       .map((p) => {
-        const t =
-          p.closeTime ??
-          p.closeTimestamp ??
-          p.closedAt ??
-          p.exitTime ??
-          p.time ??
-          p.ts ??
-          null;
-        const key = safeDateKey(t);
-        const pnlCandidates = [
-          p.netPnl,
-          p.pnl,
-          p.totalPnl,
-          p.sumPnl,
-          p.totalNetProfit,
-          p.totalRealizedPnl,
-          p.profit,
-          p.realizedPnl,
-        ];
-
-        let pnl = 0;
-        for (const c of pnlCandidates) {
-          const n = num(c, NaN);
-          if (Number.isFinite(n)) {
-            pnl = n;
-            break;
-          }
-        }
-        return { t, pnl };
+        const key = safeDateKey(getPosCloseTime(p));
+        return { t: key, pnl: getPosNet(p) };
       })
       .filter((x) => !!x.t)
       .sort((a, b) => String(a.t).localeCompare(String(b.t)));
 
-    // aggregate by day
     const byDayAgg = new Map<string, number>();
     for (const m of mapped) {
       const k = String(m.t);
@@ -289,7 +278,9 @@ export function computeRiskSummary(
   }
 
   const equityArr = equityPoints.map((p) => p.equity);
-  const { maxDD, maxDDPct } = computeMaxDrawdown(equityArr);
+  const { maxDD: equityMaxDD, maxDDPct: equityMaxDDPct } =
+    computeMaxDrawdown(equityArr);
+
   const drawdownPeriods = detectDrawdownPeriods(equityPoints);
   const currentDrawdownPeriod =
     drawdownPeriods.length &&
@@ -303,46 +294,66 @@ export function computeRiskSummary(
   const peakEquity = equityArr.length ? Math.max(...equityArr) : startEquity;
   const currentDrawdown = lastEquity - peakEquity; // <= 0
 
+  const currentDrawdownPct =
+    peakEquity !== 0 ? Math.abs(currentDrawdown) / Math.abs(peakEquity) : null;
+
+  // “Wie viel muss ich verdienen bis Break-even?”
+  const distanceToBreakeven = Math.max(0, -currentDrawdown);
+
+  // “Wie viel % Return brauche ich von HEUTE aus, um Break-even zu erreichen?”
+  const requiredReturnPct =
+    lastEquity !== 0 ? distanceToBreakeven / Math.abs(lastEquity) : null;
+
   // -------------------------
-  // 2) Win/Loss stats (from positions if possible, else trades)
+  // 2) Win/Loss stats (MATCH Dashboard by using core)
   // -------------------------
-  const pnlSeries =
-    positions.length > 0
-      ? positions.map((p) =>
-          num(p.netPnl ?? p.pnl ?? p.profit ?? p.realizedPnl ?? 0, 0),
-        )
-      : trades.map((t) =>
-          num(t.netPnl ?? t.pnl ?? t.profit ?? t.realizedPnl ?? 0, 0),
-        );
-
-  const wins = pnlSeries.filter((x) => x > 0);
-  const losses = pnlSeries.filter((x) => x < 0);
-  const winRate = pnlSeries.length ? wins.length / pnlSeries.length : 0;
-
-  const avgWin = wins.length
-    ? wins.reduce((a, b) => a + b, 0) / wins.length
-    : 0;
-  const avgLoss = losses.length
-    ? losses.reduce((a, b) => a + b, 0) / losses.length
-    : 0; // negative
-
+  const winRate = num(core.winRate ?? 0, 0);
+  const avgWin = num(core.avgWin ?? 0, 0);
+  const avgLoss = num(core.avgLoss ?? 0, 0); // usually negative
   const winLossRatio =
     avgLoss !== 0 ? Math.abs(avgWin) / Math.abs(avgLoss) : null;
 
+  // ✅ Total PnL must match Dashboard totalNetProfit
+  const totalPnl = num(core.totalNetProfit ?? 0, 0);
+
   // -------------------------
-  // 3) Loss streak
+  // 3) Loss streak (chronological positions by close time)
   // -------------------------
+  const posSorted = [...positions].sort((a: AnyObj, b: AnyObj) => {
+    const ta = new Date(getPosCloseTime(a) ?? 0).getTime();
+    const tb = new Date(getPosCloseTime(b) ?? 0).getTime();
+    return ta - tb;
+  });
+
+  const pnlSeries = posSorted.length
+    ? posSorted.map(getPosNet)
+    : // fallback to trades if there are no positions
+      (trades ?? []).map((t: AnyObj) =>
+        num(
+          t?.netProfit ??
+            t?.totalNetProfit ??
+            t?.netPnl ??
+            t?.pnl ??
+            t?.profit ??
+            t?.realizedPnl ??
+            0,
+          0,
+        ),
+      );
+
   let currentLossStreak = 0;
   let maxLossStreak = 0;
+  let cur = 0;
+
   for (const x of pnlSeries) {
     if (x < 0) {
-      currentLossStreak += 1;
-      if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+      cur += 1;
+      if (cur > maxLossStreak) maxLossStreak = cur;
     } else {
-      currentLossStreak = 0;
+      cur = 0;
     }
   }
-  // recompute current streak from end
+
   let endStreak = 0;
   for (let i = pnlSeries.length - 1; i >= 0; i--) {
     if (pnlSeries[i] < 0) endStreak++;
@@ -350,22 +361,25 @@ export function computeRiskSummary(
   }
   currentLossStreak = endStreak;
 
-  const totalPnl = pnlSeries.reduce((a, b) => a + b, 0);
+  // -------------------------
+  // 4) Drawdown numbers (MATCH Dashboard)
+  // -------------------------
+  // Dashboard KPI shows stats.maxDrawdown from buildPositionStats (positions-based).
+  // So: use core.maxDrawdown for the headline "Max Drawdown" to match 1:1.
+  const maxDD = num(core.maxDrawdown ?? 0, 0);
+
+  // Pct is only meaningful on equity curve; keep from equity curve but safe:
+  const maxDDPct =
+    equityMaxDDPct != null && equityMaxDDPct > 0 ? equityMaxDDPct : null;
 
   // -------------------------
-  // 4) Simple stability score v1 (rule-based)
+  // 5) Simple stability score v1 (rule-based)
   // -------------------------
-  // Score starts at 100 and deducts penalties
   let stabilityScore = 100;
 
-  // drawdown penalty (bigger DD => lower score)
-  // scale: every -50 units knocks ~10 points (adjust later)
   stabilityScore -= Math.min(60, (Math.abs(maxDD) / 50) * 10);
-
-  // loss-streak penalty
   stabilityScore -= Math.min(25, maxLossStreak * 2);
 
-  // win/loss ratio penalty
   if (winLossRatio != null && winLossRatio < 1) {
     stabilityScore -= Math.min(20, (1 - winLossRatio) * 20);
   }
@@ -373,31 +387,21 @@ export function computeRiskSummary(
   stabilityScore = Math.max(0, Math.round(stabilityScore));
 
   // -------------------------
-  // 5) Trades per day (Overtrading proxy)
+  // 6) Trades per day (Overtrading proxy)
   // -------------------------
-  // Prefer byDay if available (most accurate)
   let daysWithTrades = 0;
   let totalTrades = 0;
 
   if (byDay.length > 0) {
     daysWithTrades = byDay.length;
     totalTrades = byDay.reduce(
-      (a, d) => a + num(d.trades ?? d.positions ?? 0, 0),
+      (a, d) => a + num(d?.trades ?? d?.positions ?? 0, 0),
       0,
     );
   } else {
-    // fallback: infer by day from positions close time
     const dayMap = new Map<string, number>();
     for (const p of positions) {
-      const t =
-        p.closeTime ??
-        p.closeTimestamp ??
-        p.closedAt ??
-        p.exitTime ??
-        p.time ??
-        p.ts ??
-        null;
-      const k = safeDateKey(t);
+      const k = safeDateKey(getPosCloseTime(p));
       if (!k) continue;
       dayMap.set(k, (dayMap.get(k) ?? 0) + 1);
     }
@@ -408,7 +412,7 @@ export function computeRiskSummary(
   const tradesPerDayAvg = daysWithTrades > 0 ? totalTrades / daysWithTrades : 0;
 
   // -------------------------
-  // 6) Risk inconsistency proxy (CV of abs pnl)
+  // 7) Risk inconsistency proxy (CV of abs pnl)
   // -------------------------
   const absPnL = pnlSeries
     .map((x) => Math.abs(x))
@@ -417,8 +421,39 @@ export function computeRiskSummary(
   const absStd = std(absPnL);
   const riskInconsistencyCV = absMean > 0 ? absStd / absMean : 0;
 
+  type RiskMode = "NORMAL" | "CAUTION" | "RECOVERY" | "CRITICAL";
+
+  const ddPctForMode = currentDrawdownPct ?? 0;
+
+  let riskMode: RiskMode = "NORMAL";
+
+  // Hard triggers zuerst (CRITICAL)
+  if (ddPctForMode >= 0.2 || maxLossStreak >= 9) {
+    riskMode = "CRITICAL";
+  } else if (
+    ddPctForMode >= 0.1 ||
+    maxLossStreak >= 6 ||
+    (winLossRatio != null && winLossRatio < 0.9)
+  ) {
+    riskMode = "RECOVERY";
+  } else if (
+    ddPctForMode >= 0.05 ||
+    maxLossStreak >= 4 ||
+    riskInconsistencyCV > 1.0
+  ) {
+    riskMode = "CAUTION";
+  }
+
+  // Trading Allowed (Decision)
+  const tradingAllowed =
+    riskMode === "CRITICAL"
+      ? "NO"
+      : riskMode === "RECOVERY"
+        ? "LIMITED"
+        : "YES";
+
   // -------------------------
-  // 7) Tradevion Risk Score v1 (rule-based)
+  // 8) Tradevion Risk Score v1 (rule-based)
   // -------------------------
   const breakdown: {
     key: string;
@@ -428,7 +463,6 @@ export function computeRiskSummary(
   }[] = [];
   let riskScore = 100;
 
-  // A) Drawdown penalty
   const ddPct = maxDDPct ?? null;
   let ddPenalty = 0;
   if (ddPct != null) {
@@ -446,7 +480,6 @@ export function computeRiskSummary(
     });
   }
 
-  // B) Loss streak penalty
   let streakPenalty = 0;
   if (maxLossStreak >= 9) streakPenalty = 25;
   else if (maxLossStreak >= 6) streakPenalty = 15;
@@ -462,7 +495,6 @@ export function computeRiskSummary(
     });
   }
 
-  // C) Risk inconsistency penalty (CV)
   let incPenalty = 0;
   if (riskInconsistencyCV > 1.2) incPenalty = 20;
   else if (riskInconsistencyCV > 0.8) incPenalty = 10;
@@ -477,7 +509,6 @@ export function computeRiskSummary(
     });
   }
 
-  // D) Overtrading penalty (trades/day)
   let overPenalty = 0;
   if (tradesPerDayAvg > 10) overPenalty = 20;
   else if (tradesPerDayAvg > 5) overPenalty = 10;
@@ -498,30 +529,26 @@ export function computeRiskSummary(
     riskScore >= 75 ? "stable" : riskScore >= 50 ? "risky" : "dangerous";
 
   // -------------------------
-  // 5) Reasons + Actions (v1)
+  // 9) Reasons + Actions (v1)
   // -------------------------
   const reasons: string[] = [];
   const actions: string[] = [];
 
-  // Reason 1: Drawdown
   if (maxDD < -100) reasons.push("Large max drawdown");
   else if (maxDD < -50) reasons.push("Max drawdown is noticeable");
   else reasons.push("Drawdown is under control");
 
-  // Reason 2: Loss streak
   if (maxLossStreak >= 6) reasons.push("Long loss streaks");
   else if (maxLossStreak >= 3)
     reasons.push("Loss streaks are hurting consistency");
   else reasons.push("Loss streaks are controlled");
 
-  // Reason 3: Win/Loss ratio
   if (winLossRatio != null && winLossRatio < 1)
     reasons.push("Average loss is bigger than average win");
   else if (winLossRatio != null && winLossRatio < 1.5)
     reasons.push("Win/Loss ratio can improve");
   else reasons.push("Win/Loss ratio looks healthy");
 
-  // Actions (simple + concrete)
   if (maxDD < -100)
     actions.push("Cut risk per trade by 25% until drawdown recovers.");
   else
@@ -545,7 +572,6 @@ export function computeRiskSummary(
   else
     actions.push("Keep risk constant—avoid scaling up on ‘feels good’ days.");
 
-  // Keep top 3 reasons/actions
   const topReasons = reasons.slice(0, 3);
   const topActions = actions.slice(0, 3);
 
@@ -563,24 +589,26 @@ export function computeRiskSummary(
       detail: string;
     }[] = [];
 
-    // 1) Drawdown
     const ddAbs = Math.abs(params.maxDrawdown ?? 0);
-    const ddPct = params.maxDrawdownPct ?? null;
+    const ddPctLocal = params.maxDrawdownPct ?? null;
 
     let ddSev: "LOW" | "MED" | "HIGH" = "LOW";
-    if (ddAbs >= 200 || (ddPct != null && ddPct >= 0.25)) ddSev = "HIGH";
-    else if (ddAbs >= 80 || (ddPct != null && ddPct >= 0.12)) ddSev = "MED";
+    if (ddAbs >= 200 || (ddPctLocal != null && ddPctLocal >= 0.25))
+      ddSev = "HIGH";
+    else if (ddAbs >= 80 || (ddPctLocal != null && ddPctLocal >= 0.12))
+      ddSev = "MED";
 
     drivers.push({
       label: "Drawdown size",
       severity: ddSev,
       detail:
-        ddPct == null
+        ddPctLocal == null
           ? `Max DD: ${params.maxDrawdown.toFixed(2)}`
-          : `Max DD: ${params.maxDrawdown.toFixed(2)} (~${(ddPct * 100).toFixed(1)}% of peak)`,
+          : `Max DD: ${params.maxDrawdown.toFixed(
+              2,
+            )} (~${(ddPctLocal * 100).toFixed(1)}% of peak)`,
     });
 
-    // 2) Loss streak
     let lsSev: "LOW" | "MED" | "HIGH" = "LOW";
     if ((params.maxLossStreak ?? 0) >= 6) lsSev = "HIGH";
     else if ((params.maxLossStreak ?? 0) >= 3) lsSev = "MED";
@@ -591,7 +619,6 @@ export function computeRiskSummary(
       detail: `Max loss streak: ${params.maxLossStreak} trades`,
     });
 
-    // 3) Win/Loss ratio (avg win vs avg loss)
     const wlr = params.winLossRatio;
     let wlrSev: "LOW" | "MED" | "HIGH" = "LOW";
     if (wlr != null) {
@@ -606,7 +633,6 @@ export function computeRiskSummary(
         wlr == null ? "Not enough data" : `Win/Loss ratio: ${wlr.toFixed(2)}`,
     });
 
-    // Sort by severity, return top 3
     const sevRank = { HIGH: 3, MED: 2, LOW: 1 } as const;
     return drivers
       .sort((a, b) => sevRank[b.severity] - sevRank[a.severity])
@@ -624,15 +650,20 @@ export function computeRiskSummary(
 
   return {
     equity: equityPoints,
+
+    // ✅ headline metrics now match Dashboard
     maxDrawdown: maxDD,
     maxDrawdownPct: maxDDPct,
     currentDrawdown,
+
     winRate,
     avgWin,
     avgLoss,
     winLossRatio,
+
     maxLossStreak,
     currentLossStreak,
+
     totalPnl,
     stabilityScore,
 
@@ -649,5 +680,11 @@ export function computeRiskSummary(
 
     drawdownPeriods,
     currentDrawdownPeriod,
+
+    currentDrawdownPct,
+    distanceToBreakeven,
+    requiredReturnPct,
+    riskMode,
+    tradingAllowed,
   };
 }
