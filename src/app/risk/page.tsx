@@ -1664,19 +1664,190 @@ export default function RiskPage() {
               subtitle="Penalties and score calculation overview"
               defaultOpen={false}
             >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(12, 1fr)",
-                  gap: 12,
-                }}
-              >
-                <div style={{ gridColumn: "span 5" }}>
-                  {/* paste your existing Risk Score card here */}
-                </div>
+              <div style={{ gridColumn: "span 5" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(12, 1fr)",
+                    gap: 12,
+                    marginTop: 12,
+                  }}
+                >
+                  <div style={{ gridColumn: "span 5" }}>
+                    <div
+                      className="card"
+                      style={{
+                        padding: 16,
+                        borderRadius: 16,
+                        border: "1px solid var(--border)",
+                        background: "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <div
+                        className="p-muted"
+                        style={{ fontSize: 12, fontWeight: 900 }}
+                      >
+                        Tradevion Risk Score (v1)
+                      </div>
 
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 14,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 64,
+                            height: 64,
+                            borderRadius: 18,
+                            display: "grid",
+                            placeItems: "center",
+                            fontWeight: 1000,
+                            fontSize: 22,
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            background:
+                              risk?.riskBand === "stable"
+                                ? "rgba(54,211,153,0.14)"
+                                : risk?.riskBand === "risky"
+                                  ? "rgba(255,193,7,0.12)"
+                                  : "rgba(255,107,107,0.12)",
+                            color:
+                              risk?.riskBand === "stable"
+                                ? "#36d399"
+                                : risk?.riskBand === "risky"
+                                  ? "#f5c542"
+                                  : "#ff6b6b",
+                          }}
+                        >
+                          {risk?.riskScore ?? 0}
+                        </div>
+
+                        <div style={{ lineHeight: 1.2 }}>
+                          <div style={{ fontWeight: 1000, fontSize: 14 }}>
+                            {risk?.riskBand === "stable"
+                              ? "Stable"
+                              : risk?.riskBand === "risky"
+                                ? "Risky"
+                                : "Dangerous"}
+                          </div>
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 6, fontSize: 12 }}
+                          >
+                            Rule-based score from drawdown, streaks,
+                            inconsistency, overtrading.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 12 }}>
+                        <div
+                          className="p-muted"
+                          style={{ fontSize: 12, fontWeight: 900 }}
+                        >
+                          Top penalties
+                        </div>
+
+                        {risk?.breakdown?.length ? (
+                          <div
+                            style={{ marginTop: 8, display: "grid", gap: 8 }}
+                          >
+                            {risk.breakdown.slice(0, 4).map((b: any) => (
+                              <div
+                                key={b.key}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  padding: "10px 12px",
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  background: "rgba(255,255,255,0.03)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  <div
+                                    style={{ fontWeight: 900, fontSize: 12 }}
+                                  >
+                                    {b.label}
+                                  </div>
+                                  <div
+                                    className="p-muted"
+                                    style={{ fontSize: 12 }}
+                                  >
+                                    {b.value}
+                                  </div>
+                                </div>
+                                <div
+                                  style={{
+                                    fontWeight: 1000,
+                                    color: "#ff6b6b",
+                                  }}
+                                >
+                                  -{b.penalty}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 8, fontSize: 12 }}
+                          >
+                            No penalties detected. Nice.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "span 7" }}>
                 <div style={{ gridColumn: "span 7" }}>
-                  {/* paste your existing What to do next (v1) card here */}
+                  <div
+                    className="card"
+                    style={{
+                      padding: 16,
+                      borderRadius: 16,
+                      border: "1px solid var(--border)",
+                      background: "rgba(255,255,255,0.02)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1000 }}>What to do next (v1)</div>
+                    <div
+                      className="p-muted"
+                      style={{ marginTop: 8, lineHeight: 1.45 }}
+                    >
+                      Based on your score, these are the fastest fixes:
+                      <ul style={{ marginTop: 10, paddingLeft: 18 }}>
+                        <li>
+                          <b>Drawdown control:</b> reduce size when DD grows (DD
+                          &gt; 10% ⇒ cut risk).
+                        </li>
+                        <li>
+                          <b>Streak rule:</b> stop after 3 consecutive losses
+                          (cooldown).
+                        </li>
+                        <li>
+                          <b>Consistency:</b> keep trade size stable (avoid big
+                          size jumps).
+                        </li>
+                        <li>
+                          <b>Overtrading:</b> cap trades/day (e.g. max 5–10).
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Disclosure>
@@ -1690,10 +1861,39 @@ export default function RiskPage() {
               <div className="p-muted" style={{ fontSize: 12 }}>
                 Coming next…
               </div>
-              {/* paste your existing 'Why this score' Section content here */}
-            </Disclosure>
+              <div className="p-muted" style={{ lineHeight: 1.5 }}>
+                {(risk as any)?.reasons?.length ? (
+                  <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(risk as any).reasons.map((r: string, i: number) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  "—"
+                )}
+              </div>
 
-            {/* paste your existing 'Why this score' Section content here */}
+              <div
+                style={{
+                  height: 1,
+                  background: "var(--border)",
+                  margin: "12px 0",
+                }}
+              />
+
+              <div style={{ fontWeight: 1000 }}>3 rules to improve</div>
+              <div className="p-muted" style={{ marginTop: 8 }}>
+                {(risk as any)?.actions?.length ? (
+                  <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+                    {(risk as any).actions.map((a: string, i: number) => (
+                      <li key={i}>{a}</li>
+                    ))}
+                  </ol>
+                ) : (
+                  "—"
+                )}
+              </div>
+            </Disclosure>
 
             {/* 4) Drawdown phases */}
             <Disclosure
@@ -1709,7 +1909,117 @@ export default function RiskPage() {
               <div className="p-muted" style={{ fontSize: 12 }}>
                 Coming next…
               </div>
-              {/* paste your existing Drawdown Phases Section content here */}
+              {/* Active phase */}
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.02)",
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                  {active ? "Current drawdown" : "No active drawdown"}
+                </div>
+
+                {active ? (
+                  <div
+                    className="p-muted"
+                    style={{ fontSize: 12, lineHeight: 1.5 }}
+                  >
+                    Started: <b>{active.start}</b> • Trough:{" "}
+                    <b>{active.trough}</b> • Depth:{" "}
+                    <b style={{ color: "#ff6b6b" }}>{fmtMoney(active.depth)}</b>{" "}
+                    {active.depthPct != null ? (
+                      <>
+                        (≈{" "}
+                        <b style={{ color: "#ff6b6b" }}>
+                          {fmtPct(active.depthPct)}
+                        </b>
+                        )
+                      </>
+                    ) : null}
+                    <br />
+                    Days in DD: <b>{fmtDays(active.durationDays)}</b>
+                    <br />
+                    Days to trough: <b>{fmtDays(active.timeToTroughDays)}</b>
+                    <br />
+                    Recovery days:{" "}
+                    <b>
+                      {active.recoveryDays == null
+                        ? "—"
+                        : fmtDays(active.recoveryDays)}
+                    </b>
+                  </div>
+                ) : (
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    Your equity is currently at (or above) its last peak.
+                  </div>
+                )}
+              </div>
+
+              {/* Last phases */}
+              {last3.length ? (
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {last3.map((p, idx) => (
+                    <div
+                      key={`${p.start}-${idx}`}
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        border: "1px solid var(--border)",
+                        background: "rgba(255,255,255,0.02)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                        <div style={{ fontWeight: 900 }}>
+                          {p.start} → {p.recovery ?? "not recovered"}
+                        </div>
+                        <div className="p-muted">
+                          Trough: <b>{p.trough}</b> • Depth:{" "}
+                          <b style={{ color: "#ff6b6b" }}>
+                            {fmtMoney(p.depth)}
+                          </b>{" "}
+                          {p.depthPct != null ? (
+                            <>
+                              (≈{" "}
+                              <b style={{ color: "#ff6b6b" }}>
+                                {fmtPct(p.depthPct)}
+                              </b>
+                              )
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div
+                        className="p-muted"
+                        style={{ fontSize: 12, textAlign: "right" }}
+                      >
+                        DD days: <b>{fmtDays(p.durationDays)}</b>
+                        <br />
+                        Recovery:{" "}
+                        <b>
+                          {p.recoveryDays == null
+                            ? "—"
+                            : fmtDays(p.recoveryDays)}
+                        </b>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="p-muted"
+                  style={{ marginTop: 12, fontSize: 12 }}
+                >
+                  Not enough history yet to detect drawdown phases.
+                </div>
+              )}
             </Disclosure>
 
             {/* 5) Roadmap */}
@@ -1721,341 +2031,15 @@ export default function RiskPage() {
               <div className="p-muted" style={{ fontSize: 12 }}>
                 Coming next…
               </div>
-              {/* paste your existing Roadmap block here */}
-            </Disclosure>
-          </Section>
-
-          {/* ===== 3) Scoring + Guidance ===== */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(12, 1fr)",
-              gap: 12,
-              marginTop: 12,
-            }}
-          >
-            <div style={{ gridColumn: "span 5" }}>
-              <div
-                className="card"
-                style={{
-                  padding: 16,
-                  borderRadius: 16,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                }}
-              >
-                <div
-                  className="p-muted"
-                  style={{ fontSize: 12, fontWeight: 900 }}
-                >
-                  Tradevion Risk Score (v1)
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 64,
-                      height: 64,
-                      borderRadius: 18,
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 1000,
-                      fontSize: 22,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background:
-                        risk?.riskBand === "stable"
-                          ? "rgba(54,211,153,0.14)"
-                          : risk?.riskBand === "risky"
-                            ? "rgba(255,193,7,0.12)"
-                            : "rgba(255,107,107,0.12)",
-                      color:
-                        risk?.riskBand === "stable"
-                          ? "#36d399"
-                          : risk?.riskBand === "risky"
-                            ? "#f5c542"
-                            : "#ff6b6b",
-                    }}
-                  >
-                    {risk?.riskScore ?? 0}
-                  </div>
-
-                  <div style={{ lineHeight: 1.2 }}>
-                    <div style={{ fontWeight: 1000, fontSize: 14 }}>
-                      {risk?.riskBand === "stable"
-                        ? "Stable"
-                        : risk?.riskBand === "risky"
-                          ? "Risky"
-                          : "Dangerous"}
-                    </div>
-                    <div
-                      className="p-muted"
-                      style={{ marginTop: 6, fontSize: 12 }}
-                    >
-                      Rule-based score from drawdown, streaks, inconsistency,
-                      overtrading.
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <div
-                    className="p-muted"
-                    style={{ fontSize: 12, fontWeight: 900 }}
-                  >
-                    Top penalties
-                  </div>
-
-                  {risk?.breakdown?.length ? (
-                    <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                      {risk.breakdown.slice(0, 4).map((b: any) => (
-                        <div
-                          key={b.key}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 10,
-                            padding: "10px 12px",
-                            borderRadius: 12,
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            background: "rgba(255,255,255,0.03)",
-                          }}
-                        >
-                          <div
-                            style={{ display: "flex", flexDirection: "column" }}
-                          >
-                            <div style={{ fontWeight: 900, fontSize: 12 }}>
-                              {b.label}
-                            </div>
-                            <div className="p-muted" style={{ fontSize: 12 }}>
-                              {b.value}
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: 1000, color: "#ff6b6b" }}>
-                            -{b.penalty}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      className="p-muted"
-                      style={{ marginTop: 8, fontSize: 12 }}
-                    >
-                      No penalties detected. Nice.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ gridColumn: "span 7" }}>
-              <div
-                className="card"
-                style={{
-                  padding: 16,
-                  borderRadius: 16,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                }}
-              >
-                <div style={{ fontWeight: 1000 }}>What to do next (v1)</div>
-                <div
-                  className="p-muted"
-                  style={{ marginTop: 8, lineHeight: 1.45 }}
-                >
-                  Based on your score, these are the fastest fixes:
-                  <ul style={{ marginTop: 10, paddingLeft: 18 }}>
-                    <li>
-                      <b>Drawdown control:</b> reduce size when DD grows (DD
-                      &gt; 10% ⇒ cut risk).
-                    </li>
-                    <li>
-                      <b>Streak rule:</b> stop after 3 consecutive losses
-                      (cooldown).
-                    </li>
-                    <li>
-                      <b>Consistency:</b> keep trade size stable (avoid big size
-                      jumps).
-                    </li>
-                    <li>
-                      <b>Overtrading:</b> cap trades/day (e.g. max 5–10).
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ===== 4) Explanation ===== */}
-          <Section title="Why this score">
-            <div className="p-muted" style={{ lineHeight: 1.5 }}>
-              {(risk as any)?.reasons?.length ? (
-                <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-                  {(risk as any).reasons.map((r: string, i: number) => (
-                    <li key={i}>{r}</li>
-                  ))}
+              <div className="p-muted" style={{ lineHeight: 1.4 }}>
+                This is the first “Risk OS” layer. Next we’ll add:
+                <ul style={{ marginTop: 8, paddingLeft: 18 }}>
+                  <li>Drawdown period detection (start/end, recovery time)</li>
+                  <li>Overtrading & “loss-streak escalation” signals</li>
+                  <li>Rules: max daily loss / max trades per day</li>
                 </ul>
-              ) : (
-                "—"
-              )}
-            </div>
-
-            <div
-              style={{
-                height: 1,
-                background: "var(--border)",
-                margin: "12px 0",
-              }}
-            />
-
-            <div style={{ fontWeight: 1000 }}>3 rules to improve</div>
-            <div className="p-muted" style={{ marginTop: 8 }}>
-              {(risk as any)?.actions?.length ? (
-                <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-                  {(risk as any).actions.map((a: string, i: number) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ol>
-              ) : (
-                "—"
-              )}
-            </div>
-          </Section>
-
-          {/* ===== 5) Drawdown phases ===== */}
-          <Section
-            title="Drawdown Phases"
-            right={
-              <div className="p-muted" style={{ fontSize: 12 }}>
-                {periods.length} total
               </div>
-            }
-            subtitle="A drawdown phase starts at a new peak → ends when equity recovers to that peak."
-          >
-            {/* Active phase */}
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 14,
-                border: "1px solid var(--border)",
-                background: "rgba(255,255,255,0.02)",
-              }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                {active ? "Current drawdown" : "No active drawdown"}
-              </div>
-
-              {active ? (
-                <div
-                  className="p-muted"
-                  style={{ fontSize: 12, lineHeight: 1.5 }}
-                >
-                  Started: <b>{active.start}</b> • Trough:{" "}
-                  <b>{active.trough}</b> • Depth:{" "}
-                  <b style={{ color: "#ff6b6b" }}>{fmtMoney(active.depth)}</b>{" "}
-                  {active.depthPct != null ? (
-                    <>
-                      (≈{" "}
-                      <b style={{ color: "#ff6b6b" }}>
-                        {fmtPct(active.depthPct)}
-                      </b>
-                      )
-                    </>
-                  ) : null}
-                  <br />
-                  Days in DD: <b>{fmtDays(active.durationDays)}</b>
-                  <br />
-                  Days to trough: <b>{fmtDays(active.timeToTroughDays)}</b>
-                  <br />
-                  Recovery days:{" "}
-                  <b>
-                    {active.recoveryDays == null
-                      ? "—"
-                      : fmtDays(active.recoveryDays)}
-                  </b>
-                </div>
-              ) : (
-                <div className="p-muted" style={{ fontSize: 12 }}>
-                  Your equity is currently at (or above) its last peak.
-                </div>
-              )}
-            </div>
-
-            {/* Last phases */}
-            {last3.length ? (
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {last3.map((p, idx) => (
-                  <div
-                    key={`${p.start}-${idx}`}
-                    style={{
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid var(--border)",
-                      background: "rgba(255,255,255,0.02)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-                      <div style={{ fontWeight: 900 }}>
-                        {p.start} → {p.recovery ?? "not recovered"}
-                      </div>
-                      <div className="p-muted">
-                        Trough: <b>{p.trough}</b> • Depth:{" "}
-                        <b style={{ color: "#ff6b6b" }}>{fmtMoney(p.depth)}</b>{" "}
-                        {p.depthPct != null ? (
-                          <>
-                            (≈{" "}
-                            <b style={{ color: "#ff6b6b" }}>
-                              {fmtPct(p.depthPct)}
-                            </b>
-                            )
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div
-                      className="p-muted"
-                      style={{ fontSize: 12, textAlign: "right" }}
-                    >
-                      DD days: <b>{fmtDays(p.durationDays)}</b>
-                      <br />
-                      Recovery:{" "}
-                      <b>
-                        {p.recoveryDays == null ? "—" : fmtDays(p.recoveryDays)}
-                      </b>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-muted" style={{ marginTop: 12, fontSize: 12 }}>
-                Not enough history yet to detect drawdown phases.
-              </div>
-            )}
-          </Section>
-
-          {/* ===== 6) Roadmap block (unchanged content) ===== */}
-          <Section title="Next actions (v1)">
-            <div className="p-muted" style={{ lineHeight: 1.4 }}>
-              This is the first “Risk OS” layer. Next we’ll add:
-              <ul style={{ marginTop: 8, paddingLeft: 18 }}>
-                <li>Drawdown period detection (start/end, recovery time)</li>
-                <li>Overtrading & “loss-streak escalation” signals</li>
-                <li>Rules: max daily loss / max trades per day</li>
-              </ul>
-            </div>
+            </Disclosure>
           </Section>
         </>
       )}
