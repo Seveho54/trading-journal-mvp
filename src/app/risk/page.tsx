@@ -535,6 +535,46 @@ function sevPill(sev: "LOW" | "MED" | "HIGH") {
   );
 }
 
+function Section({
+  title,
+  right,
+  subtitle,
+  children,
+}: {
+  title: React.ReactNode;
+  right?: React.ReactNode;
+  subtitle?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="card"
+      style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontWeight: 1000 }}>{title}</div>
+        {right ? <div>{right}</div> : null}
+      </div>
+
+      {subtitle ? (
+        <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+          {subtitle}
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 12 }}>{children}</div>
+    </div>
+  );
+}
+
 export default function RiskPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -548,7 +588,6 @@ export default function RiskPage() {
     // Prefer positions because they reflect completed positions (usually cleaner than raw fills)
     const positions = (data as any)?.positions ?? [];
     const trades = (data as any)?.trades ?? [];
-
     const byDayPositions = (data as any)?.byDayPositions ?? [];
 
     console.log("[risk] byDayPositions length:", byDayPositions?.length);
@@ -562,17 +601,23 @@ export default function RiskPage() {
 
   const periods = risk?.drawdownPeriods ?? [];
   const active = risk?.currentDrawdownPeriod ?? null;
-
   const last3 = periods.slice(-3).reverse(); // show newest first
 
   return (
     <main style={{ maxWidth: 1100, margin: "30px auto", padding: 16 }}>
-      {/* Header */}
+      {/* ===== Header ===== */}
       <div
         className="card"
         style={{ padding: 16, borderRadius: 16, marginBottom: 14 }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ lineHeight: 1.05 }}>
             <div style={{ fontSize: 18, fontWeight: 1000 }}>Risk</div>
             <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
@@ -587,6 +632,7 @@ export default function RiskPage() {
               alignItems: "center",
               gap: 10,
               flexWrap: "wrap",
+              justifyContent: "flex-end",
             }}
           >
             {hasSession && risk ? (
@@ -641,6 +687,7 @@ export default function RiskPage() {
         </div>
       </div>
 
+      {/* ===== Empty State ===== */}
       {!hasSession ? (
         <div className="card" style={{ padding: 16, borderRadius: 16 }}>
           <div style={{ fontWeight: 1000 }}>No session loaded</div>
@@ -659,153 +706,158 @@ export default function RiskPage() {
         </div>
       ) : (
         <>
-          {/* Top stats grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(12, 1fr)",
-              gap: 12,
-            }}
+          {/* ===== 1) At a glance ===== */}
+          <Section
+            title="At a glance"
+            subtitle="Core stability + drawdown + edge metrics. Same values as before — just organized."
           >
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Max Drawdown"
-                value={
-                  <span
-                    style={{
-                      color:
-                        (risk?.maxDrawdown ?? 0) < 0
-                          ? "#ff6b6b"
-                          : "var(--text)",
-                    }}
-                  >
-                    {fmtMoney(risk?.maxDrawdown ?? 0)}
-                  </span>
-                }
-                sub={
-                  risk?.maxDrawdownPct != null ? (
-                    <>≈ {fmtPct(risk.maxDrawdownPct)} of peak</>
-                  ) : risk?.currentDrawdownPct != null ? (
-                    <>current DD ≈ {fmtPct(risk.currentDrawdownPct)}</>
-                  ) : (
-                    "—"
-                  )
-                }
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Win Rate"
-                value={fmtPct(risk?.winRate ?? 0)}
-                sub={
-                  <>
-                    Avg win <b>{fmtMoney(risk?.avgWin ?? 0)}</b> • Avg loss{" "}
-                    <b style={{ color: "#ff6b6b" }}>
-                      {fmtMoney(risk?.avgLoss ?? 0)}
-                    </b>
-                  </>
-                }
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Stability Score (v1)"
-                value={<span>{risk?.stabilityScore ?? 0}/100</span>}
-                sub={
-                  <>
-                    Current DD{" "}
-                    <b
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(12, 1fr)",
+                gap: 12,
+              }}
+            >
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Max Drawdown"
+                  value={
+                    <span
                       style={{
                         color:
-                          (risk?.currentDrawdown ?? 0) < 0
+                          (risk?.maxDrawdown ?? 0) < 0
                             ? "#ff6b6b"
                             : "var(--text)",
                       }}
                     >
-                      {fmtMoney(risk?.currentDrawdown ?? 0)}
-                    </b>
-                  </>
-                }
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Win/Loss Ratio"
-                value={
-                  risk?.winLossRatio == null
-                    ? "—"
-                    : risk.winLossRatio.toFixed(2)
-                }
-                sub="avg win ÷ avg loss"
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Loss Streak (max)"
-                value={risk?.maxLossStreak ?? 0}
-                sub={
-                  <>
-                    current streak <b>{risk?.currentLossStreak ?? 0}</b>
-                  </>
-                }
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Total PnL"
-                value={
-                  <span
-                    style={{
-                      color: (risk?.totalPnl ?? 0) >= 0 ? "#36d399" : "#ff6b6b",
-                    }}
-                  >
-                    {fmtMoney(risk?.totalPnl ?? 0)}
-                  </span>
-                }
-                sub="sum of positions/trades"
-              />
-            </div>
-
-            <div style={{ gridColumn: "span 4" }}>
-              <StatCard
-                title="Distance to Break-even"
-                value={fmtMoneyLike(risk?.distanceToBreakeven ?? 0, ccy)}
-                sub={
-                  <>
-                    Required return{" "}
-                    <b>{fmtPctOrDash(risk?.requiredReturnPct ?? null)}</b>
-                  </>
-                }
-              />
-            </div>
-          </div>
-
-          {risk?.drivers?.length ? (
-            <div
-              className="card"
-              style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ fontWeight: 1000 }}>Top Risk Drivers</div>
-                <div className="p-muted" style={{ fontSize: 12 }}>
-                  Why your Stability Score looks like this
-                </div>
+                      {fmtMoney(risk?.maxDrawdown ?? 0)}
+                    </span>
+                  }
+                  sub={
+                    risk?.maxDrawdownPct != null ? (
+                      <>≈ {fmtPct(risk.maxDrawdownPct)} of peak</>
+                    ) : risk?.currentDrawdownPct != null ? (
+                      <>current DD ≈ {fmtPct(risk.currentDrawdownPct)}</>
+                    ) : (
+                      "—"
+                    )
+                  }
+                />
               </div>
 
-              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Win Rate"
+                  value={fmtPct(risk?.winRate ?? 0)}
+                  sub={
+                    <>
+                      Avg win <b>{fmtMoney(risk?.avgWin ?? 0)}</b> • Avg loss{" "}
+                      <b style={{ color: "#ff6b6b" }}>
+                        {fmtMoney(risk?.avgLoss ?? 0)}
+                      </b>
+                    </>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Stability Score (v1)"
+                  value={<span>{risk?.stabilityScore ?? 0}/100</span>}
+                  sub={
+                    <>
+                      Current DD{" "}
+                      <b
+                        style={{
+                          color:
+                            (risk?.currentDrawdown ?? 0) < 0
+                              ? "#ff6b6b"
+                              : "var(--text)",
+                        }}
+                      >
+                        {fmtMoney(risk?.currentDrawdown ?? 0)}
+                      </b>
+                    </>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Win/Loss Ratio"
+                  value={
+                    risk?.winLossRatio == null
+                      ? "—"
+                      : risk.winLossRatio.toFixed(2)
+                  }
+                  sub="avg win ÷ avg loss"
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Loss Streak (max)"
+                  value={risk?.maxLossStreak ?? 0}
+                  sub={
+                    <>
+                      current streak <b>{risk?.currentLossStreak ?? 0}</b>
+                    </>
+                  }
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Total PnL"
+                  value={
+                    <span
+                      style={{
+                        color:
+                          (risk?.totalPnl ?? 0) >= 0 ? "#36d399" : "#ff6b6b",
+                      }}
+                    >
+                      {fmtMoney(risk?.totalPnl ?? 0)}
+                    </span>
+                  }
+                  sub="sum of positions/trades"
+                />
+              </div>
+
+              <div style={{ gridColumn: "span 4" }}>
+                <StatCard
+                  title="Distance to Break-even"
+                  value={fmtMoneyLike(risk?.distanceToBreakeven ?? 0, ccy)}
+                  sub={
+                    <>
+                      Required return{" "}
+                      <b>{fmtPctOrDash(risk?.requiredReturnPct ?? null)}</b>
+                    </>
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Charts directly under KPIs (same charts, better placement) */}
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <MiniDrawdownChart points={risk?.equity ?? []} />
+              <MiniEquityChart points={risk?.equity ?? []} />
+            </div>
+          </Section>
+
+          {/* ===== 2) Drivers ===== */}
+          {risk?.drivers?.length ? (
+            <Section
+              title="Top Risk Drivers"
+              subtitle="Why your Stability Score looks like this"
+            >
+              <div style={{ display: "grid", gap: 10 }}>
                 {risk.drivers.slice(0, 3).map((d: any, idx: number) => (
                   <div
                     key={idx}
@@ -838,10 +890,10 @@ export default function RiskPage() {
                 Next: we can add “1 recommended rule” (e.g. stop after X losses
                 / max daily loss).
               </div>
-            </div>
+            </Section>
           ) : null}
 
-          {/* Risk Score v1 */}
+          {/* ===== 3) Scoring + Guidance ===== */}
           <div
             style={{
               display: "grid",
@@ -1010,12 +1062,9 @@ export default function RiskPage() {
             </div>
           </div>
 
-          <div
-            className="card"
-            style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
-          >
-            <div style={{ fontWeight: 1000 }}>Why this score</div>
-            <div className="p-muted" style={{ marginTop: 8 }}>
+          {/* ===== 4) Explanation ===== */}
+          <Section title="Why this score">
+            <div className="p-muted" style={{ lineHeight: 1.5 }}>
               {(risk as any)?.reasons?.length ? (
                 <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
                   {(risk as any).reasons.map((r: string, i: number) => (
@@ -1047,35 +1096,21 @@ export default function RiskPage() {
                 "—"
               )}
             </div>
-          </div>
+          </Section>
 
-          <div
-            className="card"
-            style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <div style={{ fontWeight: 1000 }}>Drawdown Phases</div>
+          {/* ===== 5) Drawdown phases ===== */}
+          <Section
+            title="Drawdown Phases"
+            right={
               <div className="p-muted" style={{ fontSize: 12 }}>
                 {periods.length} total
               </div>
-            </div>
-
-            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-              A drawdown phase starts at a new peak → ends when equity recovers
-              to that peak.
-            </div>
-
+            }
+            subtitle="A drawdown phase starts at a new peak → ends when equity recovers to that peak."
+          >
             {/* Active phase */}
             <div
               style={{
-                marginTop: 12,
                 padding: 12,
                 borderRadius: 14,
                 border: "1px solid var(--border)",
@@ -1177,29 +1212,11 @@ export default function RiskPage() {
                 Not enough history yet to detect drawdown phases.
               </div>
             )}
-          </div>
+          </Section>
 
-          {/* Equity chart */}
-          {/* Charts (under KPIs) */}
-          <div
-            style={{
-              marginTop: 12,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-            }}
-          >
-            <MiniDrawdownChart points={risk?.equity ?? []} />
-            <MiniEquityChart points={risk?.equity ?? []} />
-          </div>
-
-          {/* Next actions (v1 guidance) */}
-          <div
-            className="card"
-            style={{ padding: 16, borderRadius: 16, marginTop: 12 }}
-          >
-            <div style={{ fontWeight: 1000 }}>Next actions (v1)</div>
-            <div className="p-muted" style={{ marginTop: 8, lineHeight: 1.4 }}>
+          {/* ===== 6) Roadmap block (unchanged content) ===== */}
+          <Section title="Next actions (v1)">
+            <div className="p-muted" style={{ lineHeight: 1.4 }}>
               This is the first “Risk OS” layer. Next we’ll add:
               <ul style={{ marginTop: 8, paddingLeft: 18 }}>
                 <li>Drawdown period detection (start/end, recovery time)</li>
@@ -1207,7 +1224,7 @@ export default function RiskPage() {
                 <li>Rules: max daily loss / max trades per day</li>
               </ul>
             </div>
-          </div>
+          </Section>
         </>
       )}
     </main>
