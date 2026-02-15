@@ -117,12 +117,14 @@ export function computeRiskSummary(
           null;
         const key = safeDateKey(t);
         const pnlCandidates = [
-          d.netPnl,
-          d.pnl,
-          d.totalPnl,
-          d.sumPnl,
-          d.totalNetProfit,
-          d.totalRealizedPnl,
+          p.netPnl,
+          p.pnl,
+          p.totalPnl,
+          p.sumPnl,
+          p.totalNetProfit,
+          p.totalRealizedPnl,
+          p.profit,
+          p.realizedPnl,
         ];
 
         let pnl = 0;
