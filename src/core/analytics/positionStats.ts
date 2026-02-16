@@ -2,11 +2,21 @@
 import type { Position } from "../positions/buildPositions";
 
 function safeNum(n: any) {
-  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+  const x =
+    typeof n === "number"
+      ? n
+      : typeof n === "string"
+        ? Number(n.replace(",", "."))
+        : Number(n);
+  return Number.isFinite(x) ? x : 0;
 }
 
-function ts(s?: string) {
-  return s ? new Date(s).getTime() : 0;
+function ts(s?: string | number | Date) {
+  if (!s) return 0;
+  if (typeof s === "number") return Number.isFinite(s) ? s : 0;
+  if (s instanceof Date) return s.getTime();
+  const t = new Date(s).getTime();
+  return Number.isFinite(t) ? t : 0;
 }
 
 export type PositionStats = {
@@ -16,47 +26,59 @@ export type PositionStats = {
   winRate: number;
 
   totalNetProfit: number;
+  avgPnlPerPosition: number;
 
   avgWin: number;
   avgLoss: number; // negativ
-  profitFactor: number; // grossProfit / abs(grossLoss)
+  profitFactor: number;
 
   avgHoldMinutes: number;
-  maxDrawdown: number; // negativ (Equity-Drawdown)
+  maxDrawdown: number; // negativ
 };
 
 export function buildPositionStats(positions: Position[]): PositionStats {
-  const closed = (positions ?? []).filter((p) => p.closedAt);
+  const closed = (positions ?? []).filter((p) => !!p.closedAt);
 
   const profits = closed.map((p) => safeNum(p.netProfit));
-  const wins = profits.filter((x) => x > 0);
-  const losses = profits.filter((x) => x < 0);
+  const winsArr = profits.filter((x) => x > 0);
+  const lossesArr = profits.filter((x) => x < 0);
 
   const totalNetProfit = profits.reduce((a, b) => a + b, 0);
+  const avgPnlPerPosition = closed.length ? totalNetProfit / closed.length : 0;
 
-  const grossProfit = wins.reduce((a, b) => a + b, 0);
-  const grossLoss = losses.reduce((a, b) => a + b, 0); // negativ
+  const grossProfit = winsArr.reduce((a, b) => a + b, 0);
+  const grossLoss = lossesArr.reduce((a, b) => a + b, 0); // negativ
 
-  const winRate = closed.length ? wins.length / closed.length : 0;
-  const avgWin = wins.length ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  const wins = winsArr.length;
+  const losses = lossesArr.length;
 
-  const profitFactor = Math.abs(grossLoss) > 0 ? grossProfit / Math.abs(grossLoss) : (grossProfit > 0 ? Infinity : 0);
+  const winRate = closed.length ? wins / closed.length : 0;
+  const avgWin = wins ? grossProfit / wins : 0;
+  const avgLoss = losses ? grossLoss / losses : 0;
 
-  // Holding time
+  const profitFactor =
+    Math.abs(grossLoss) > 0
+      ? grossProfit / Math.abs(grossLoss)
+      : grossProfit > 0
+        ? Infinity
+        : 0;
+
+  // Holding time: openedAt -> closedAt (muss in buildPositions korrekt gesetzt sein!)
   const holds = closed.map((p) => {
     const open = ts(p.openedAt);
     const close = ts(p.closedAt);
     const ms = Math.max(0, close - open);
     return ms / 60000;
   });
-  const avgHoldMinutes = holds.length ? holds.reduce((a, b) => a + b, 0) / holds.length : 0;
+  const avgHoldMinutes = holds.length
+    ? holds.reduce((a, b) => a + b, 0) / holds.length
+    : 0;
 
-  // Max drawdown from equity curve (sorted by closedAt)
+  // Max drawdown from equity curve (chronologisch nach closedAt)
   const sorted = [...closed].sort((a, b) => ts(a.closedAt) - ts(b.closedAt));
   let equity = 0;
   let peak = 0;
-  let maxDrawdown = 0; // negative
+  let maxDrawdown = 0;
 
   for (const p of sorted) {
     equity += safeNum(p.netProfit);
@@ -66,10 +88,11 @@ export function buildPositionStats(positions: Position[]): PositionStats {
 
   return {
     positions: closed.length,
-    wins: wins.length,
-    losses: losses.length,
+    wins,
+    losses,
     winRate,
     totalNetProfit,
+    avgPnlPerPosition,
     avgWin,
     avgLoss,
     profitFactor,

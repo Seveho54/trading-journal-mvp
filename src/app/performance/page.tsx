@@ -1160,15 +1160,27 @@ export default function PerformancePage() {
     );
 
     // ---- Weekly / Monthly / Yearly (simple MVP definition)
-    // weekly = last 7 trading days (not calendar week)
-    const last7 = days.slice(-7);
-    const weeklyNet = last7.reduce(
+    // weekly = current calendar week (ISO week, Monday start, UTC)
+    const now = new Date();
+    const startOfWeek = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() - ((now.getUTCDay() + 6) % 7),
+      ),
+    );
+
+    const weekDays = days.filter((d: any) => {
+      const dt = new Date(d.day);
+      return dt >= startOfWeek && dt <= now;
+    });
+
+    const weeklyNet = weekDays.reduce(
       (acc: number, d: any) => acc + (d.totalNetProfit ?? 0),
       0,
     );
 
     // monthly = current calendar month (UTC-ish via string)
-    const now = new Date();
     const curMonthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const monthDays = days.filter((d: any) =>
       String(d.day ?? "").startsWith(curMonthKey),
@@ -1189,11 +1201,21 @@ export default function PerformancePage() {
     );
 
     // ---- Best/Worst days (overall)
-    const sortedDays = [...days].sort(
+    const validDays = days.filter(
+      (d: any) => Number(d.totalNetProfit ?? 0) !== 0,
+    );
+
+    const sortedDays = [...validDays].sort(
       (a: any, b: any) => (b.totalNetProfit ?? 0) - (a.totalNetProfit ?? 0),
     );
+
     const bestDays = sortedDays.slice(0, 4);
-    const worstDays = [...sortedDays].reverse().slice(0, 4);
+
+    const worstDays = [...validDays]
+      .sort(
+        (a: any, b: any) => (a.totalNetProfit ?? 0) - (b.totalNetProfit ?? 0),
+      )
+      .slice(0, 4);
 
     // ---- Trade duration analytics from positions (openedAt/closedAt)
     const withDur = (positions ?? [])

@@ -185,19 +185,7 @@ export default function CalendarPage() {
   }, [byDay, positions, trades, currentMonthKey]);
 
   function goToNewestMonth() {
-    if (!byDay.length) return setMonthOffset(0);
-    const newest = [...byDay].sort((a: any, b: any) =>
-      String(b.day).localeCompare(String(a.day)),
-    )[0];
-    const [yy, mm] = String(newest.day)
-      .split("-")
-      .map((x) => parseInt(x, 10));
-    if (!yy || !mm) return;
-
-    const target = new Date(Date.UTC(yy, mm - 1, 1));
-    const now = new Date();
-    const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    setMonthOffset(monthDiffUTC(target, base));
+    setMonthOffset(0);
   }
 
   // ✅ NOW early returns are safe (no hooks below this line)

@@ -70,7 +70,11 @@ export default function DashboardPage() {
   const [bucket, setBucket] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
   const [mode, setMode] = useState<"EQUITY" | "DAILY">("EQUITY");
 
-  const positions = useMemo(() => (data?.positions ?? []) as any[], [data]);
+  const positions = useMemo(
+    () => ((data?.positions ?? []) as any[]).filter((p) => !!p?.closedAt),
+    [data],
+  );
+
   const stats = useMemo(
     () => buildPositionStats(positions as any),
     [positions],

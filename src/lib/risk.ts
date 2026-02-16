@@ -374,8 +374,12 @@ export function computeRiskSummary(
   }
 
   const equityArr = equityPoints.map((p) => p.equity);
+
+  // include baseline as first point so peak starts at startEquity
+  const equityArrForDD = [startEquity, ...equityArr];
+
   const { maxDD: equityMaxDD, maxDDPct: equityMaxDDPct } =
-    computeMaxDrawdown(equityArr);
+    computeMaxDrawdown(equityArrForDD);
 
   const drawdownPeriods = detectDrawdownPeriods(equityPoints);
   const currentDrawdownPeriod =
@@ -387,18 +391,24 @@ export function computeRiskSummary(
   const lastEquity = equityArr.length
     ? equityArr[equityArr.length - 1]
     : startEquity;
-  const peakEquity = equityArr.length ? Math.max(...equityArr) : startEquity;
+  const peakEquity = equityArr.length
+    ? Math.max(startEquity, ...equityArr)
+    : startEquity;
+
   const currentDrawdown = lastEquity - peakEquity; // <= 0
 
+  const pctBase =
+    peakEquity > 0 ? peakEquity : startEquity > 0 ? startEquity : null;
+
   const currentDrawdownPct =
-    peakEquity !== 0 ? Math.abs(currentDrawdown) / Math.abs(peakEquity) : null;
+    pctBase != null ? Math.abs(currentDrawdown) / pctBase : null;
 
   // “Wie viel muss ich verdienen bis Break-even?”
   const distanceToBreakeven = Math.max(0, -currentDrawdown);
 
   // “Wie viel % Return brauche ich von HEUTE aus, um Break-even zu erreichen?”
   const requiredReturnPct =
-    lastEquity !== 0 ? distanceToBreakeven / Math.abs(lastEquity) : null;
+    pctBase != null && lastEquity !== 0 ? distanceToBreakeven / pctBase : null;
 
   const dailyPnls = daily.map((d) => d.pnl);
   const worstDayPnl = dailyPnls.length ? Math.min(...dailyPnls) : 0;

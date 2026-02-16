@@ -1,7 +1,6 @@
 // src/core/positions/buildPositions.ts
 import type { TradeEvent } from "../schema/trade";
 
-
 export type Position = {
   id: string;
 
@@ -11,7 +10,6 @@ export type Position = {
   openedAt: string;
   closedAt?: string;
 
-  // total size (closed size == position size, weil wir Positionen nur "final" ausgeben)
   quantity: number;
 
   entryPrice: number;
@@ -25,27 +23,36 @@ export type Position = {
 
 type LotTrade =
   | (TradeEvent & { _sliceQty?: never })
-  | (TradeEvent & { _sliceQty: number }); // nur bei CLOSE
+  | (TradeEvent & { _sliceQty: number });
 
-
-type OpenLot = {
-  key: string;
+type ActivePos = {
   id: string;
+  key: string;
   symbol: string;
   positionSide: "LONG" | "SHORT";
   openedAt: string;
 
+  openQtyTotal: number;
+  closeQtyTotal: number;
   remainingQty: number;
 
-  // gewichteter entry
-  entryNotional: number; // sum(openQty * openPrice)
-  entryQty: number;      // sum(openQty)
+  entryNotional: number;
+  exitNotional: number;
+
+  sumRealized: number;
+  sumNet: number;
 
   trades: LotTrade[];
 };
 
 function safeNum(n: any) {
-  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+  const x =
+    typeof n === "number"
+      ? n
+      : typeof n === "string"
+        ? Number(n.replace(",", "."))
+        : Number(n);
+  return Number.isFinite(x) ? x : 0;
 }
 
 function ts(t: TradeEvent) {
@@ -56,159 +63,118 @@ function makeKey(t: TradeEvent) {
   return `${t.exchange}|${t.marketType}|${t.symbol}|${t.positionSide}`;
 }
 
-/**
- * Baut Positionen aus TradeEvents.
- * - FIFO matching: CLOSE reduziert OPEN-Lots
- * - Partial closes: erzeugen ggf. mehrere Positionen (wenn ein Close mehrere Lots schließt)
- * - PnL: summiert realizedPnl/netProfit aus CLOSE-Events anteilig nach Qty
- */
 export function buildPositions(trades: TradeEvent[]) {
   const errors: string[] = [];
 
   const sorted = [...trades].sort((a, b) => ts(a) - ts(b));
 
-  // offene Lots pro key
-  const openLotsByKey = new Map<string, OpenLot[]>();
-
+  const activeByKey = new Map<string, ActivePos>();
   const positions: Position[] = [];
 
   for (const t of sorted) {
-    // Wir wollen nur EXECUTED berücksichtigen
     if (t.status && t.status !== "EXECUTED") continue;
 
-    // Schutz
     const qty = safeNum(t.quantity);
     const price = safeNum(t.price);
     const realizedPnl = safeNum((t as any).realizedPnl);
     const netProfit = safeNum((t as any).netProfit);
 
     if (!t.symbol || !t.positionSide) continue;
+    if (qty <= 0) continue;
+
     const key = makeKey(t);
 
+    // ---------------- OPEN ----------------
     if (t.action === "OPEN") {
-      if (qty <= 0) continue;
+      let pos = activeByKey.get(key);
 
-      const lots = openLotsByKey.get(key) ?? [];
-      const lot: OpenLot = {
-        key,
-        id: `${t.symbol}-${t.positionSide}-${t.id ?? t.timestamp}-${lots.length + 1}`,
-        symbol: t.symbol,
-        positionSide: t.positionSide as any,
-        openedAt: t.timestamp,
-        remainingQty: qty,
-        entryNotional: qty * price,
-        entryQty: qty,
-        trades: [t],
-      };
-      lots.push(lot);
-      openLotsByKey.set(key, lots);
+      if (!pos) {
+        pos = {
+          id: `${t.symbol}-${t.positionSide}-${t.id ?? t.timestamp}`,
+          key,
+          symbol: t.symbol,
+          positionSide: t.positionSide as any,
+          openedAt: t.timestamp,
+
+          openQtyTotal: 0,
+          closeQtyTotal: 0,
+          remainingQty: 0,
+
+          entryNotional: 0,
+          exitNotional: 0,
+
+          sumRealized: 0,
+          sumNet: 0,
+
+          trades: [],
+        };
+        activeByKey.set(key, pos);
+      }
+
+      pos.openQtyTotal += qty;
+      pos.remainingQty += qty;
+      pos.entryNotional += qty * price;
+      pos.trades.push(t);
+
       continue;
     }
 
+    // ---------------- CLOSE ----------------
     if (t.action === "CLOSE") {
-      if (qty <= 0) continue;
+      const pos = activeByKey.get(key);
 
-      const lots = openLotsByKey.get(key) ?? [];
-      if (lots.length === 0) {
-        errors.push(`CLOSE without OPEN: ${t.symbol} ${t.positionSide} at ${t.timestamp} (id=${t.id ?? "-"})`);
+      if (!pos || pos.remainingQty <= 1e-8) {
+        errors.push(
+          `CLOSE without OPEN: ${t.symbol} ${t.positionSide} at ${t.timestamp}`,
+        );
         continue;
       }
 
-      let remainingCloseQty = qty;
+      const takeQty = Math.min(qty, pos.remainingQty);
 
-      // wir können einen Close über mehrere Lots verteilen (FIFO)
-      while (remainingCloseQty > 0 && lots.length > 0) {
-        const lot = lots[0];
+      pos.closeQtyTotal += takeQty;
+      pos.remainingQty -= takeQty;
 
-        const takeQty = Math.min(lot.remainingQty, remainingCloseQty);
-        if (takeQty <= 0) break;
+      pos.exitNotional += takeQty * price;
 
-        // anteilig PnL für diesen Position-Teil
-        const ratio = takeQty / qty;
+      const r = qty > 0 ? takeQty / qty : 0;
+      pos.sumRealized += realizedPnl * r;
+      pos.sumNet += netProfit * r;
 
-        // Exit weighted avg (für diese Position ist Exit = close price; bei mehreren close events wird gemittelt)
-        // Wir bauen Position erst, wenn lot vollständig geschlossen ODER close-qty erschöpft? -> hier erzeugen wir
-        // eine Position, wenn ein Lot vollständig geschlossen wird. Bei partial close lassen wir Lot offen.
-        // Zusätzlich: wenn Close einen Lot teils schließt und dann endet -> noch keine Position.
-        // ABER: du willst "1 Position = kompletter Roundtrip". Also Position entsteht erst wenn Lot qty 0 ist.
-        lot.trades.push({ ...t, _sliceQty: takeQty });
+      pos.trades.push({ ...t, _sliceQty: takeQty });
 
+      // Position vollständig geschlossen
+      if (pos.remainingQty <= 1e-8) {
+        const entryPrice =
+          pos.openQtyTotal > 0 ? pos.entryNotional / pos.openQtyTotal : 0;
 
-        // Wir müssen fürs Lot die Exit-Infos sammeln. Einfach: wir speichern Exit per "closed slice" nicht im Lot,
-        // sondern erstellen Position erst bei vollständigem Close und berechnen Exit/PNL aus Trades.
-        lot.remainingQty -= takeQty;
-        remainingCloseQty -= takeQty;
+        const exitPrice =
+          pos.closeQtyTotal > 0 ? pos.exitNotional / pos.closeQtyTotal : 0;
 
-        // wenn Lot komplett geschlossen -> Position finalisieren
-        if (lot.remainingQty <= 0.00000001) {
-          // Entry
-          const entryQty = lot.entryQty;
-          const entryPrice = entryQty > 0 ? lot.entryNotional / entryQty : 0;
+        const finalNet = pos.sumNet !== 0 ? pos.sumNet : pos.sumRealized;
 
-          // Exit: gewichteter Schnitt aller CLOSE-Events in lot.trades
-          let exitNotional = 0;
-          let exitQty = 0;
+        positions.push({
+          id: pos.id,
+          symbol: pos.symbol,
+          positionSide: pos.positionSide,
+          openedAt: pos.openedAt,
+          closedAt: t.timestamp,
+          quantity: pos.openQtyTotal,
+          entryPrice,
+          exitPrice,
+          realizedPnl: pos.sumRealized,
+          netProfit: finalNet,
+          trades: pos.trades,
+        });
 
-          let sumRealized = 0;
-          let sumNet = 0;
-
-          for (const ev of lot.trades) {
-            if (ev.action !== "CLOSE") continue;
-            const q = safeNum((ev as any)._sliceQty ?? ev.quantity);
-
-            const p = safeNum(ev.price);
-            exitNotional += q * p;
-            exitQty += q;
-
-            const fullQ = safeNum(ev.quantity);
-const sliceQ = safeNum((ev as any)._sliceQty ?? ev.quantity);
-const r = fullQ > 0 ? sliceQ / fullQ : 0;
-
-sumRealized += safeNum((ev as any).realizedPnl) * r;
-sumNet += safeNum((ev as any).netProfit) * r;
-
-          }
-
-          const exitPrice = exitQty > 0 ? exitNotional / exitQty : 0;
-
-          const closedAt = lot.trades
-            .filter((x) => x.action === "CLOSE")
-            .slice(-1)[0]?.timestamp;
-
-          // Fallback: wenn netProfit fehlt, nimm realized
-          const finalNet = sumNet !== 0 ? sumNet : sumRealized;
-
-          positions.push({
-            id: lot.id,
-            symbol: lot.symbol,
-            positionSide: lot.positionSide,
-            openedAt: lot.openedAt,
-            closedAt,
-            quantity: entryQty,
-            entryPrice,
-            exitPrice,
-            realizedPnl: sumRealized,
-            netProfit: finalNet,
-            trades: lot.trades,
-          });
-
-          lots.shift(); // entfernt fertigen Lot
-        } else {
-          // Lot ist noch offen -> wir müssen Entry weiterführen (bleibt gleich),
-          // PnL kommt später wenn final geschlossen
-          // Wichtig: bei partial close hängen wir Close-Event trotzdem ans Lot, damit PnL später drin ist.
-          // (Das ist ok, weil wir Position erst bei komplettem Close erzeugen.)
-        }
+        activeByKey.delete(key);
       }
 
-      openLotsByKey.set(key, lots);
       continue;
     }
   }
 
-  // Offene Lots am Ende (unclosed positions)
-  const openLotsLeft: OpenLot[] = [];
-  for (const lots of openLotsByKey.values()) openLotsLeft.push(...lots);
+  const openLotsLeft = [...activeByKey.values()];
 
   return { positions, openLotsLeft, errors };
 }

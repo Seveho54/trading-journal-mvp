@@ -1,6 +1,12 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export type TradeSessionData = {
   summary: any | null;
@@ -30,12 +36,18 @@ type TradeSessionContextValue = {
   setIsPro: (v: boolean) => void;
 };
 
-const TradeSessionContext = createContext<TradeSessionContextValue | null>(null);
+const TradeSessionContext = createContext<TradeSessionContextValue | null>(
+  null,
+);
 
-const STORAGE_KEY = "tradeSession:v1";
+const STORAGE_KEY = "tradeSession:v2";
 const PRO_KEY = "tradeSession:isPro:v1";
 
-export function TradeSessionProvider({ children }: { children: React.ReactNode }) {
+export function TradeSessionProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [data, setDataState] = useState<TradeSessionData | null>(null);
   const [isPro, setIsProState] = useState(false);
 
@@ -89,11 +101,16 @@ export function TradeSessionProvider({ children }: { children: React.ReactNode }
     };
   }, [data, isPro]);
 
-  return <TradeSessionContext.Provider value={value}>{children}</TradeSessionContext.Provider>;
+  return (
+    <TradeSessionContext.Provider value={value}>
+      {children}
+    </TradeSessionContext.Provider>
+  );
 }
 
 export function useTradeSession() {
   const ctx = useContext(TradeSessionContext);
-  if (!ctx) throw new Error("useTradeSession must be used inside TradeSessionProvider");
+  if (!ctx)
+    throw new Error("useTradeSession must be used inside TradeSessionProvider");
   return ctx;
 }
