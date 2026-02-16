@@ -306,9 +306,20 @@ export type ModeExplanation = {
 
 export function computeRiskSummary(
   input: { positions: AnyObj[]; trades: AnyObj[]; byDayPositions?: AnyObj[] },
-  opts?: { startEquity?: number },
+  opts?: {
+    startEquity?: number;
+    forecastHorizonTrades?: number;
+    recentK?: number;
+  },
 ) {
   const startEquity = opts?.startEquity ?? 0;
+
+  const forecastHorizonTrades = Math.max(
+    10,
+    Math.min(200, opts?.forecastHorizonTrades ?? 30),
+  );
+
+  const recentK = Math.max(5, Math.min(50, opts?.recentK ?? 10));
 
   const positions = Array.isArray(input.positions) ? input.positions : [];
   const trades = Array.isArray(input.trades) ? input.trades : [];
@@ -641,8 +652,6 @@ export function computeRiskSummary(
   // -------------------------
   // What-If / Forecast Scenarios (v1)
   // -------------------------
-  const forecastHorizonTrades = 30;
-  const recentK = 10;
 
   function lastNArr(arr: number[], n: number) {
     if (!arr.length) return [];
@@ -736,6 +745,13 @@ export function computeRiskSummary(
 
   const scenarioForecasts = scenarios.map((s) => {
     const curve = buildTradeIndexCurve(forecastStartEquity, s.pnls);
+    let peak = -Infinity;
+    const drawdownCurve = curve.map((p) => {
+      if (p.equity > peak) peak = p.equity;
+      const dd = p.equity - peak; // <= 0
+      return { t: p.t, drawdown: dd, peak };
+    });
+
     const endEquity = curve.length
       ? curve[curve.length - 1].equity
       : forecastStartEquity;
@@ -754,6 +770,40 @@ export function computeRiskSummary(
       maxDrawdown: ddAbs,
       maxDrawdownPct: ddPctLocal,
       curve,
+      drawdownCurve,
+    };
+  });
+
+  const baseline = scenarioForecasts.find((s) => s.key === "baseline") ?? null;
+
+  const scenarioForecastsEnriched = scenarioForecasts.map((s) => {
+    const deltaVsBaseline =
+      baseline != null ? (s.delta ?? 0) - (baseline.delta ?? 0) : 0;
+
+    // symbol hint (only if scenario relates to a symbol)
+    const sym =
+      s.key === "only_top_symbol"
+        ? topSymbol
+        : s.key === "exclude_worst_symbol"
+          ? worstSymbol
+          : null;
+
+    const symStats = sym
+      ? (symbolStats.find((x) => x.symbol === sym) ?? null)
+      : null;
+
+    const poolTrades = sym ? (tradesBySymbol[sym]?.length ?? 0) : 0;
+
+    return {
+      ...s,
+      insight: {
+        deltaVsBaseline,
+        symbol: sym,
+        poolTrades,
+        symbolWinRate: symStats?.winRate ?? null,
+        symbolAvgPnl: symStats?.avgPnl ?? null,
+        symbolTotal: symStats?.totalNetProfit ?? null,
+      },
     };
   });
 
@@ -1719,7 +1769,7 @@ export function computeRiskSummary(
     tradesBySymbol,
     symbolStats,
 
-    scenarioForecasts,
+    scenarioForecasts: scenarioForecastsEnriched,
 
     rootCauseEngine,
     projection,

@@ -261,23 +261,20 @@ export default function RiskPage() {
   const ccy = (data as any)?.ccy ?? "USDT";
 
   const hasSession = !!data?.rowsParsed && (data.rowsParsed ?? 0) > 0;
+  const [horizon, setHorizon] = useState(30);
 
   const risk = useMemo(() => {
     if (!hasSession) return null;
 
-    // Prefer positions because they reflect completed positions (usually cleaner than raw fills)
     const positions = (data as any)?.positions ?? [];
     const trades = (data as any)?.trades ?? [];
     const byDayPositions = (data as any)?.byDayPositions ?? [];
 
-    console.log("[risk] byDayPositions length:", byDayPositions?.length);
-    console.log("[risk] sample byDayPositions:", byDayPositions?.[0]);
-
     return computeRiskSummary(
       { positions, trades, byDayPositions },
-      { startEquity: 0 },
+      { startEquity: 0, forecastHorizonTrades: horizon, recentK: 10 },
     );
-  }, [hasSession, data]);
+  }, [hasSession, data, horizon]);
 
   const periods = risk?.drawdownPeriods ?? [];
   const active = risk?.currentDrawdownPeriod ?? null;
@@ -1628,6 +1625,20 @@ export default function RiskPage() {
                   >
                     What happens if you continue like this — or change behavior?
                   </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[20, 50, 100].map((h) => (
+                    <button
+                      key={h}
+                      className={
+                        horizon === h ? "btn-primary" : "btn-secondary"
+                      }
+                      onClick={() => setHorizon(h)}
+                    >
+                      {h} trades
+                    </button>
+                  ))}
                 </div>
 
                 {!risk?.scenarioForecasts?.length ? (
