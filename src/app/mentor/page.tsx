@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
+import { loadRules, saveRules, uid, type Rule } from "@/lib/mentor/rules";
 
 // -----------------------------
 // Types (so TS stops complaining)
@@ -200,6 +201,31 @@ export default function MentorPage() {
 
   // small "chat-like" UX (no AI yet)
   const [prompt, setPrompt] = useState("");
+
+  const [rules, setRules] = useState<Rule[]>([]);
+
+  // load once
+  React.useEffect(() => {
+    setRules(loadRules());
+  }, []);
+
+  // persist
+  React.useEffect(() => {
+    saveRules(rules);
+  }, [rules]);
+
+  function addRule(r: Rule) {
+    setRules((prev) => {
+      // avoid duplicates
+      const exists = prev.some((x) => JSON.stringify(x) === JSON.stringify(r));
+      if (exists) return prev;
+      return [r, ...prev].slice(0, 12); // keep it compact
+    });
+  }
+
+  function removeRule(id: string) {
+    setRules((prev) => prev.filter((r) => r.id !== id));
+  }
 
   type ChatMsg = { role: "user" | "mentor"; text: string; ts: number };
 
@@ -612,6 +638,63 @@ export default function MentorPage() {
 
     return { netTotal, wins, losses, wr, topSym };
   }, [mentorRows]);
+
+  const ruleImpact = useMemo(() => {
+    const rows = mentorRows ?? [];
+    if (!rows.length || !rules.length) {
+      return {
+        total: rows.length,
+        compliant: rows.length,
+        violations: 0,
+        netCompliant: rows.reduce((a, r) => a + (r.net ?? 0), 0),
+        netViolations: 0,
+      };
+    }
+
+    function violates(rule: Rule, r: MentorRow) {
+      if (rule.type === "AVOID_HOUR_UTC") {
+        const ts = pickTimeForBehavior(r);
+        const h = hourUTC(ts);
+        return h != null && h === rule.hour;
+      }
+
+      if (rule.type === "AVOID_COMBO") {
+        const hb = holdBucketLabel(r.holdMin ?? null);
+        return (
+          r.symbol === rule.symbol &&
+          r.side === rule.side &&
+          hb === rule.holdBucket
+        );
+      }
+
+      // FOCUS_COMBO is not a violation rule (Step 2 will use it for A-Setup mode)
+      return false;
+    }
+
+    let violations = 0;
+    let netCompliant = 0;
+    let netViolations = 0;
+
+    for (const r of rows) {
+      const violated = rules.some((rule) => violates(rule, r));
+      if (violated) {
+        violations++;
+        netViolations += r.net ?? 0;
+      } else {
+        netCompliant += r.net ?? 0;
+      }
+    }
+
+    const compliant = rows.length - violations;
+
+    return {
+      total: rows.length,
+      compliant,
+      violations,
+      netCompliant,
+      netViolations,
+    };
+  }, [mentorRows, rules]);
 
   const mentorRules = useMemo(() => {
     type Rule = {
@@ -2500,6 +2583,221 @@ export default function MentorPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* RULE SYSTEM (MVP) */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontWeight: 1000 }}>Rule System (MVP)</div>
+            <div className="p-muted" style={{ marginTop: 8, fontSize: 12 }}>
+              Save simple rules and track if you break them. (Local only)
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <div style={cardInner()}>
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  Compliance
+                </div>
+                <div style={{ marginTop: 6, fontWeight: 1000, fontSize: 18 }}>
+                  {ruleImpact.total
+                    ? `${Math.round(
+                        (ruleImpact.compliant / ruleImpact.total) * 100,
+                      )}%`
+                    : "—"}
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  {ruleImpact.compliant} compliant · {ruleImpact.violations}{" "}
+                  violations
+                </div>
+              </div>
+
+              <div style={cardInner()}>
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  Net PnL (compliant)
+                </div>
+                <div
+                  className={pnlClass(ruleImpact.netCompliant)}
+                  style={{ marginTop: 6, fontWeight: 1000, fontSize: 18 }}
+                >
+                  {fmtMoney(ruleImpact.netCompliant, DEFAULT_CCY)}
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  When you follow rules
+                </div>
+              </div>
+
+              <div style={cardInner()}>
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  Net PnL (violations)
+                </div>
+                <div
+                  className={pnlClass(ruleImpact.netViolations)}
+                  style={{ marginTop: 6, fontWeight: 1000, fontSize: 18 }}
+                >
+                  {fmtMoney(ruleImpact.netViolations, DEFAULT_CCY)}
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  When you break rules
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                className="btn-secondary"
+                disabled={!worstCombo}
+                onClick={() => {
+                  if (!worstCombo) return;
+                  addRule({
+                    id: uid("avoid"),
+                    type: "AVOID_COMBO",
+                    symbol: worstCombo.symbol,
+                    side: worstCombo.side,
+                    holdBucket: worstCombo.holdBucket,
+                    createdAt: new Date().toISOString(),
+                  });
+                }}
+              >
+                Add “Avoid Leak” rule
+              </button>
+
+              <button
+                className="btn-secondary"
+                disabled={!timeBehavior.hoursWorst?.[0]}
+                onClick={() => {
+                  const w = timeBehavior.hoursWorst?.[0];
+                  if (!w) return;
+                  addRule({
+                    id: uid("hour"),
+                    type: "AVOID_HOUR_UTC",
+                    hour: w.hour,
+                    createdAt: new Date().toISOString(),
+                  });
+                }}
+              >
+                Add “Avoid Worst Hour” rule
+              </button>
+
+              <button
+                className="btn-secondary"
+                disabled={!bestCombo}
+                onClick={() => {
+                  if (!bestCombo) return;
+                  addRule({
+                    id: uid("focus"),
+                    type: "FOCUS_COMBO",
+                    symbol: bestCombo.symbol,
+                    side: bestCombo.side,
+                    holdBucket: bestCombo.holdBucket,
+                    createdAt: new Date().toISOString(),
+                  });
+                }}
+              >
+                Save “Focus Best Pattern”
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12, ...cardInner() }}>
+              <div style={{ fontWeight: 1000, marginBottom: 8 }}>
+                Active rules
+              </div>
+
+              {rules.length ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {rules.map((r) => (
+                    <div
+                      key={r.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 12 }}>
+                        {r.type === "AVOID_HOUR_UTC" ? (
+                          <>
+                            <span className="badge badge-red">AVOID</span>{" "}
+                            <b>{String(r.hour).padStart(2, "0")}:00 UTC</b>
+                          </>
+                        ) : r.type === "AVOID_COMBO" ? (
+                          <>
+                            <span className="badge badge-red">AVOID</span>{" "}
+                            <b>
+                              {r.symbol} {r.side} · {r.holdBucket}
+                            </b>
+                          </>
+                        ) : (
+                          <>
+                            <span className="badge badge-green">FOCUS</span>{" "}
+                            <b>
+                              {r.symbol} {r.side} · {r.holdBucket}
+                            </b>
+                          </>
+                        )}
+                        <div className="p-muted" style={{ marginTop: 4 }}>
+                          saved {String(r.createdAt).slice(0, 10)}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                      >
+                        {"symbol" in r ? (
+                          <button
+                            className="btn-secondary"
+                            onClick={() =>
+                              goPositions({
+                                symbol: r.symbol,
+                                side: r.side,
+                                // optional: später kannst du holdBucket als query mitgeben, falls du das in /positions filterst
+                              })
+                            }
+                          >
+                            Show trades
+                          </button>
+                        ) : (
+                          <button
+                            className="btn-secondary"
+                            onClick={() =>
+                              goPositions({
+                                hour: r.hour, // nur wenn dein /positions bereits hour filtert; sonst weglassen
+                              })
+                            }
+                          >
+                            Show trades
+                          </button>
+                        )}
+
+                        <button
+                          className="btn-danger"
+                          onClick={() => removeRule(r.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-muted" style={{ fontSize: 12 }}>
+                  No rules yet. Add one from your leak/pattern/time window.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* BOTTOM: compact analytics (keeps page short) */}
