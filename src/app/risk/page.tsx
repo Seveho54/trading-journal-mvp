@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { computeRiskSummary } from "@/lib/risk";
 import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
+import Link from "next/link";
 
 import {
   StatCard,
@@ -909,6 +910,20 @@ export default function RiskPage() {
                                 .map((x: any) => (
                                   <div
                                     key={x.day}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() =>
+                                      router.push(
+                                        `/positions?day=${encodeURIComponent(x.day)}`,
+                                      )
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        router.push(
+                                          `/positions?day=${encodeURIComponent(x.day)}`,
+                                        );
+                                      }
+                                    }}
                                     style={{
                                       display: "flex",
                                       justifyContent: "space-between",
@@ -919,7 +934,9 @@ export default function RiskPage() {
                                         "1px solid rgba(255,255,255,0.08)",
                                       background: "rgba(255,255,255,0.03)",
                                       fontSize: 12,
+                                      cursor: "pointer",
                                     }}
+                                    title="Open positions for this day"
                                   >
                                     <b>{x.day}</b>
                                     <span className="p-muted">

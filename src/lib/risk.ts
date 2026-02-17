@@ -215,6 +215,22 @@ function getPosCloseTime(p: AnyObj) {
   );
 }
 
+function getTradeTime(t: AnyObj) {
+  return (
+    t?.time ??
+    t?.ts ??
+    t?.timestamp ??
+    t?.closeTime ??
+    t?.closedAt ??
+    t?.executedAt ??
+    null
+  );
+}
+
+function getTradeDay(t: AnyObj) {
+  return safeDateKey(getTradeTime(t));
+}
+
 function getPosSymbol(p: AnyObj) {
   return p?.symbol ?? p?.market ?? p?.pair ?? p?.instrument ?? p?.ticker ?? "—";
 }
@@ -565,8 +581,6 @@ export function computeRiskSummary(
     totalTrades = Array.from(dayMap.values()).reduce((a, b) => a + b, 0);
   }
 
-  const tradesPerDayAvg = daysWithTrades > 0 ? totalTrades / daysWithTrades : 0;
-
   // -------------------------
   // 7) Risk inconsistency proxy (CV of abs pnl)
   // -------------------------
@@ -837,18 +851,16 @@ export function computeRiskSummary(
   const tailConcentration = totalLossAbs > 0 ? worst3Abs / totalLossAbs : 0;
 
   // B) Trades/day distribution
-  // Prefer byDayPositions if it includes tradesCount, else fallback to counting positions by close day.
   const tradesPerDayMap = new Map<string, number>();
 
-  // 1) use daily.tradesCount if available
-  for (const d of daily) {
-    if (d?.day && typeof d.tradesCount === "number") {
-      tradesPerDayMap.set(d.day, d.tradesCount);
+  if ((trades ?? []).length > 0) {
+    for (const t of trades ?? []) {
+      const day = getTradeDay(t);
+      if (!day) continue;
+      tradesPerDayMap.set(day, (tradesPerDayMap.get(day) ?? 0) + 1);
     }
-  }
-
-  // 2) fallback: count positions by close day (only fill missing)
-  if (tradesPerDayMap.size === 0) {
+  } else {
+    // fallback positions, falls keine trades vorhanden
     for (const p of posSorted) {
       const day = safeDateKey(getPosCloseTime(p));
       if (!day) continue;
@@ -864,9 +876,38 @@ export function computeRiskSummary(
     ? Math.max(...tradesPerDayArr.map((x) => x.count))
     : 0;
 
+  // avg & active days sollten exakt dazu passen
+  const tradesPerDayAvg = tradesPerDayArr.length
+    ? tradesPerDayArr.reduce((a, x) => a + x.count, 0) / tradesPerDayArr.length
+    : 0;
+
   // Spiral days = many trades + negative daily pnl
   const dailyPnlMap = new Map<string, number>();
   for (const d of daily) dailyPnlMap.set(d.day, d.pnl);
+
+  function getTradeNet(t: AnyObj) {
+    return num(
+      t?.netProfit ??
+        t?.totalNetProfit ??
+        t?.netPnl ??
+        t?.pnl ??
+        t?.profit ??
+        t?.realizedPnl ??
+        0,
+      0,
+    );
+  }
+
+  if ((trades ?? []).length > 0) {
+    for (const t of trades ?? []) {
+      const day = getTradeDay(t);
+      if (!day) continue;
+      dailyPnlMap.set(day, (dailyPnlMap.get(day) ?? 0) + getTradeNet(t));
+    }
+  } else {
+    // fallback: nimm weiterhin daily aus byDayPositions
+    for (const d of daily) dailyPnlMap.set(d.day, d.pnl);
+  }
 
   const spiralDays = tradesPerDayArr
     .filter((x) => (dailyPnlMap.get(x.day) ?? 0) < 0 && x.count >= 8)
