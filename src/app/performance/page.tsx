@@ -94,7 +94,7 @@ function BarChartSimple({
         }}
       >
         <span>Distribution of P&L</span>
-        <span>scale: ±{scaleLabel}</span>
+        <span className="badge badge-blue">± {scaleLabel}</span>
       </div>
 
       <div style={{ position: "relative", height, marginTop: 10 }}>
