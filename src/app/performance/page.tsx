@@ -9,6 +9,7 @@ import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 import { useEffect, useState } from "react";
 import GateOverlay from "../components/GateOverlay";
 import { track } from "@vercel/analytics";
+import { buildByDayFromPositions } from "@/core/analytics/byDayPositions";
 
 function fmt2(n: number) {
   return new Intl.NumberFormat("de-DE", {
@@ -97,16 +98,54 @@ function BarChartSimple({
       </div>
 
       <div style={{ position: "relative", height, marginTop: 10 }}>
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: "50%",
-            height: 1,
-            background: "var(--border)",
-          }}
-        />
+        {/* guide lines + labels */}
+        {[
+          {
+            y: "25%",
+            label: isMoney
+              ? fmtMoney(maxAbs * 0.5, DEFAULT_CCY)
+              : fmt2(maxAbs * 0.5),
+            strong: false,
+          },
+          {
+            y: "50%",
+            label: isMoney ? fmtMoney(0, DEFAULT_CCY) : "0",
+            strong: true,
+          },
+          {
+            y: "75%",
+            label: isMoney
+              ? fmtMoney(-maxAbs * 0.5, DEFAULT_CCY)
+              : fmt2(-maxAbs * 0.5),
+            strong: false,
+          },
+        ].map((g) => (
+          <div key={g.y}>
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: g.y,
+                height: 1,
+                background: "var(--border)",
+                opacity: g.strong ? 1 : 0.45,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: `calc(${g.y} - 10px)`,
+                fontSize: 10,
+                color: "var(--muted)",
+                opacity: 0.85,
+              }}
+            >
+              {g.label}
+            </div>
+          </div>
+        ))}
 
         <div
           style={{
@@ -114,6 +153,8 @@ function BarChartSimple({
             gridTemplateColumns: `repeat(${Math.max(1, values.length)}, 1fr)`,
             gap: 6,
             height: "100%",
+            paddingLeft: 46, // Platz für die Skalenlabels links
+            boxSizing: "border-box",
           }}
         >
           {values.map((v, i) => {
@@ -151,18 +192,27 @@ function BarChartSimple({
       <div
         style={{
           marginTop: 10,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
+          display: "grid",
+          gridTemplateColumns: `repeat(${Math.min(labels.length, 6)}, 1fr)`,
+          gap: "6px 10px",
           color: "var(--muted)",
-          fontSize: 11,
+          fontSize: 10,
+          lineHeight: 1.2,
         }}
       >
         {labels.map((l, i) => (
-          <span key={i} style={{ opacity: 0.9 }}>
+          <div
+            key={i}
+            style={{
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              opacity: 0.9,
+            }}
+            title={l}
+          >
             {l}
-            {i < labels.length - 1 ? " · " : ""}
-          </span>
+          </div>
         ))}
       </div>
     </div>
@@ -930,8 +980,8 @@ export default function PerformancePage() {
     [data],
   );
   const byDayPos = useMemo(
-    () => ((data as any)?.byDayPositions ?? []) as any[],
-    [data],
+    () => buildByDayFromPositions(positions),
+    [positions],
   );
 
   const summary = useMemo(
@@ -1151,6 +1201,11 @@ export default function PerformancePage() {
     return String(ts ?? "").slice(0, 10); // YYYY-MM-DD
   }
 
+  function dayToUTCDate(day: string) {
+    // day = "YYYY-MM-DD"
+    return new Date(`${day}T00:00:00Z`);
+  }
+
   const history = useMemo(() => {
     const days = [...byDayPos].sort((a: any, b: any) =>
       String(a.day).localeCompare(String(b.day)),
@@ -1171,7 +1226,7 @@ export default function PerformancePage() {
     );
 
     const weekDays = days.filter((d: any) => {
-      const dt = new Date(d.day);
+      const dt = dayToUTCDate(String(d.day));
       return dt >= startOfWeek && dt <= now;
     });
 
@@ -1205,9 +1260,11 @@ export default function PerformancePage() {
       (d: any) => Number(d.totalNetProfit ?? 0) !== 0,
     );
 
-    const sortedDays = [...validDays].sort(
-      (a: any, b: any) => (b.totalNetProfit ?? 0) - (a.totalNetProfit ?? 0),
-    );
+    const sortedDays = [...validDays].sort((a: any, b: any) => {
+      const diff = (b.totalNetProfit ?? 0) - (a.totalNetProfit ?? 0);
+      if (diff !== 0) return diff;
+      return String(a.day).localeCompare(String(b.day));
+    });
 
     const bestDays = sortedDays.slice(0, 4);
 
@@ -1280,9 +1337,37 @@ export default function PerformancePage() {
     }));
 
     // ---- Monthly net last 12 (for a clean “performance by last 12 months”)
-    const last12 = months.slice(-12);
-    const monthLabels12 = last12.map((m: any) => String(m.month));
-    const monthNet12 = last12.map((m: any) => Number(m.totalNetProfit ?? 0));
+    // ---- Monthly net last 12 (rolling window ending in current month)
+    function monthKeyUTC(d: Date) {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+      return `${y}-${m}`; // "YYYY-MM"
+    }
+
+    function addMonthsUTC(d: Date, delta: number) {
+      // create new date at 1st of month UTC, then shift
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + delta, 1));
+    }
+
+    // build lookup from existing months stats
+    const monthMap = new Map<string, any>();
+    for (const m of months) {
+      const k = String(m.month); // expected "YYYY-MM"
+      monthMap.set(k, m);
+    }
+
+    // generate last 12 month keys ending current month
+    const nowUTCMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const last12Keys = Array.from({ length: 12 }, (_, i) =>
+      monthKeyUTC(addMonthsUTC(nowUTCMonth, i - 11)),
+    );
+
+    const monthLabels12 = last12Keys;
+    const monthNet12 = last12Keys.map((k) =>
+      Number(monthMap.get(k)?.totalNetProfit ?? 0),
+    );
 
     return {
       weeklyNet,
