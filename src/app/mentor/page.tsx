@@ -403,6 +403,45 @@ export default function MentorPage() {
     return rows;
   }, [positions]);
 
+  // ------------------------------------------------
+  // Behavior Evolution – Period split
+  // ------------------------------------------------
+  const { currentRows, previousRows } = useMemo(() => {
+    if (!mentorRows.length) {
+      return { currentRows: [], previousRows: [] };
+    }
+
+    if (range === "all") {
+      return { currentRows: mentorRows, previousRows: [] };
+    }
+
+    const days = range === "30d" ? 30 : 90;
+    const now = new Date();
+    const currentStart = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const previousStart = new Date(
+      now.getTime() - days * 2 * 24 * 60 * 60 * 1000,
+    );
+
+    const getDate = (r: MentorRow) =>
+      r.closedAt
+        ? new Date(r.closedAt)
+        : r.openedAt
+          ? new Date(r.openedAt)
+          : null;
+
+    const currentRows = mentorRows.filter((r) => {
+      const d = getDate(r);
+      return d && d >= currentStart && d <= now;
+    });
+
+    const previousRows = mentorRows.filter((r) => {
+      const d = getDate(r);
+      return d && d >= previousStart && d < currentStart;
+    });
+
+    return { currentRows, previousRows };
+  }, [mentorRows, range]);
+
   // 2) Combo analytics: (symbol + side + hold bucket)
   const combos = useMemo<ComboBucket[]>(() => {
     const map = new Map<string, ComboBucket>();
@@ -505,6 +544,43 @@ export default function MentorPage() {
       daysWorst: [...daysFiltered].reverse().slice(0, 3),
       minN: BEHAVIOR_MIN_N,
     };
+  }, [mentorRows]);
+
+  const lossStreak = useMemo(() => {
+    // sort by time (openedAt/closedAt)
+    const rows = [...mentorRows].sort((a, b) => {
+      const ta = new Date(a.closedAt ?? a.openedAt ?? 0).getTime();
+      const tb = new Date(b.closedAt ?? b.openedAt ?? 0).getTime();
+      return ta - tb;
+    });
+
+    let cur = 0;
+    let max = 0;
+
+    for (const r of rows) {
+      if ((r.net ?? 0) < 0) {
+        cur += 1;
+        if (cur > max) max = cur;
+      } else if ((r.net ?? 0) > 0) {
+        cur = 0; // reset on win
+      } else {
+        // breakeven: ignore / don't reset
+      }
+    }
+
+    // last streak (current state)
+    let last = 0;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const n = rows[i]?.net ?? 0;
+      if (n < 0) last += 1;
+      else if (n > 0) break;
+    }
+
+    // simple guardrail thresholds
+    const warnAt = 2;
+    const stopAt = 3;
+
+    return { maxStreak: max, currentStreak: last, warnAt, stopAt };
   }, [mentorRows]);
 
   const priceZones = useMemo(() => {
@@ -637,6 +713,48 @@ export default function MentorPage() {
     })();
 
     return { netTotal, wins, losses, wr, topSym };
+  }, [mentorRows]);
+
+  // -----------------------------
+  // RISK ESCALATION DETECTION
+  // -----------------------------
+  const riskEscalation = useMemo(() => {
+    if (mentorRows.length < 3) {
+      return {
+        escalationCount: 0,
+        totalAfterLoss: 0,
+        escalationRate: 0,
+        avgIncrease: 0,
+      };
+    }
+
+    let escalationCount = 0;
+    let totalAfterLoss = 0;
+    let totalIncrease = 0;
+
+    for (let i = 1; i < mentorRows.length; i++) {
+      const prev = mentorRows[i - 1];
+      const curr = mentorRows[i];
+
+      if (prev.net < 0) {
+        totalAfterLoss++;
+
+        const prevRisk = Math.abs(prev.net);
+        const currRisk = Math.abs(curr.net);
+
+        if (currRisk > prevRisk) {
+          escalationCount++;
+          totalIncrease += currRisk - prevRisk;
+        }
+      }
+    }
+
+    return {
+      escalationCount,
+      totalAfterLoss,
+      escalationRate: totalAfterLoss > 0 ? escalationCount / totalAfterLoss : 0,
+      avgIncrease: escalationCount > 0 ? totalIncrease / escalationCount : 0,
+    };
   }, [mentorRows]);
 
   const ruleImpact = useMemo(() => {
@@ -1635,6 +1753,105 @@ export default function MentorPage() {
                         ? fmtMoney(mentorSummary.topSym.net, DEFAULT_CCY)
                         : "—"}
                     </div>
+                  </div>
+                </div>
+
+                <div style={cardInner()}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      fontWeight: 900,
+                    }}
+                  >
+                    RISK ESCALATION (AFTER LOSSES)
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span className="badge badge-purple">
+                      {riskEscalation.totalAfterLoss}x after loss
+                    </span>
+
+                    <span
+                      className={`badge ${
+                        riskEscalation.escalationRate > 0.35
+                          ? "badge-red"
+                          : "badge-green"
+                      }`}
+                    >
+                      {fmtPercent(riskEscalation.escalationRate)} escalated
+                    </span>
+
+                    <span className="badge badge-blue">
+                      avg +{fmtMoney(riskEscalation.avgIncrease, DEFAULT_CCY)}
+                    </span>
+                  </div>
+
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 8, fontSize: 12 }}
+                  >
+                    Meaning: After a red trade, you often increase risk on the
+                    next position. Keep this below ~25% to stay disciplined.
+                  </div>
+                </div>
+
+                <div style={cardInner()}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      fontWeight: 900,
+                    }}
+                  >
+                    LOSS-STREAK GUARDRAIL
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span className="badge badge-red">
+                      current: {lossStreak.currentStreak}
+                    </span>
+                    <span className="badge badge-purple">
+                      max: {lossStreak.maxStreak}
+                    </span>
+
+                    <span
+                      className={`badge ${
+                        lossStreak.currentStreak >= lossStreak.stopAt
+                          ? "badge-red"
+                          : lossStreak.currentStreak >= lossStreak.warnAt
+                            ? "badge-purple"
+                            : "badge-green"
+                      }`}
+                    >
+                      {lossStreak.currentStreak >= lossStreak.stopAt
+                        ? "STOP"
+                        : lossStreak.currentStreak >= lossStreak.warnAt
+                          ? "CAUTION"
+                          : "OK"}
+                    </span>
+                  </div>
+
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 8, fontSize: 12 }}
+                  >
+                    Rule: At {lossStreak.warnAt} consecutive losses → reduce
+                    size. At {lossStreak.stopAt} → stop for the day.
                   </div>
                 </div>
 
