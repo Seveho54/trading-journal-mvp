@@ -45,6 +45,27 @@ type ActivePos = {
   trades: LotTrade[];
 };
 
+function getExecQty(t: any) {
+  // Bitget/Binance exports variieren
+  const q =
+    t.executedQty ??
+    t.execQty ??
+    t.filledQty ??
+    t.filledAmount ??
+    t.size ??
+    t.qty ??
+    t.quantity;
+
+  return Math.abs(safeNum(q));
+}
+
+function getFillPrice(t: any) {
+  const p =
+    t.avgPrice ?? t.avgFillPrice ?? t.fillPrice ?? t.executedPrice ?? t.price;
+
+  return safeNum(p);
+}
+
 function safeNum(n: any) {
   const x =
     typeof n === "number"
@@ -74,8 +95,9 @@ export function buildPositions(trades: TradeEvent[]) {
   for (const t of sorted) {
     if (t.status && t.status !== "EXECUTED") continue;
 
-    const qty = safeNum(t.quantity);
-    const price = safeNum(t.price);
+    const qty = getExecQty(t);
+    const price = getFillPrice(t);
+
     const realizedPnl = safeNum((t as any).realizedPnl);
     const netProfit = safeNum((t as any).netProfit);
 
