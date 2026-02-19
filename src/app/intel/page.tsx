@@ -785,6 +785,16 @@ export default function IntelPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          fontSize: 11,
+          opacity: 0.6,
+          marginBottom: 8,
+        }}
+      >
+        Educational analytics only — not financial advice.
+      </div>
+
       {!hasSession ? (
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontWeight: 1000 }}>No session loaded</div>

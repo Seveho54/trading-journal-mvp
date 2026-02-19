@@ -1415,6 +1415,16 @@ export default function PerformancePage() {
         </p>
       </div>
 
+      <div
+        style={{
+          fontSize: 11,
+          opacity: 0.6,
+          marginBottom: 8,
+        }}
+      >
+        Educational analytics only — not financial advice.
+      </div>
+
       {/* Section Nav (shows what analyses exist) */}
       <SectionNav
         items={[

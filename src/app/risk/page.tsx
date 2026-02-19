@@ -520,6 +520,16 @@ export default function RiskPage() {
             </div>
           </Section>
 
+          <div
+            style={{
+              fontSize: 11,
+              opacity: 0.6,
+              marginBottom: 8,
+            }}
+          >
+            Educational analytics only — not financial advice.
+          </div>
+
           <RiskOS tab={tab} onTabChange={setTab}>
             {tab === "diagnosis" ? (
               <div style={{ display: "grid", gap: 12 }}>

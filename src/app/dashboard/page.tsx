@@ -239,6 +239,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          fontSize: 11,
+          opacity: 0.6,
+          marginBottom: 8,
+        }}
+      >
+        Educational analytics only — not financial advice.
+      </div>
+
       {/* Primary KPIs */}
       <div className="card" style={{ padding: 14, marginBottom: 14 }}>
         <div
