@@ -352,7 +352,7 @@ export default function IntelPage() {
       net,
       entry: {
         rsiLabel: classifyRSI(entryRsi),
-        macdLabel: macdState(entryMacd, entrySig),
+        macdLabel: macdState(entryMacd),
         trendLabel: trendState(entryEma20, entryEma50),
         atrPct,
       },
