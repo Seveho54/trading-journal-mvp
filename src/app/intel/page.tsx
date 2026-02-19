@@ -162,6 +162,32 @@ function confidenceLabel(idx: any) {
   return { text: "LOW (not enough history)", cls: "pnl-negative" };
 }
 
+function fmtShortMoney(n: number) {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(2)}k`;
+  return n.toFixed(2);
+}
+
+function badgeStyle(kind: "BEST" | "WORST") {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 900,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background:
+      kind === "BEST" ? "rgba(0, 212, 255, 0.10)" : "rgba(255, 72, 72, 0.10)",
+  } as React.CSSProperties;
+}
+
+function metaTextStyle(): React.CSSProperties {
+  return { fontSize: 12, opacity: 0.85, lineHeight: 1.3 };
+}
+
 export default function IntelPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -424,6 +450,55 @@ export default function IntelPage() {
   useEffect(() => {
     if (selected) loadIntel(selected);
   }, [tf, selectedId, loadIntel, selected]);
+
+  function PatternRow({ kind, p }: { kind: "BEST" | "WORST"; p: any }) {
+    const net = Number(p?.net ?? 0);
+    const count = Number(p?.count ?? 0);
+    const wr = Number(p?.winRate ?? 0);
+
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "10px 12px",
+          borderRadius: 14,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(255,255,255,0.02)",
+        }}
+      >
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={badgeStyle(kind)}>
+              {kind === "BEST" ? "EDGE" : "LEAK"}
+            </span>
+
+            <div style={{ fontWeight: 1000, fontSize: 13 }}>
+              {p?.label ?? p?.key ?? "Pattern"}
+            </div>
+          </div>
+
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            {count} trades · WR {Math.round(wr * 100)}%
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+          <div
+            className={pnlClass(net)}
+            style={{ fontWeight: 1000, fontSize: 14 }}
+          >
+            {fmtMoney(net, DEFAULT_CCY)}
+          </div>
+
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            total net · {fmtShortMoney(net)}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main
