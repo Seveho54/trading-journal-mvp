@@ -169,6 +169,49 @@ function fmtShortMoney(n: number) {
   return n.toFixed(2);
 }
 
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
+}
+
+function edgeScore(args: {
+  avg: number; // avg net per trade
+  winRate: number; // 0..1
+  count: number;
+  std: number; // std dev of net per trade
+}) {
+  const { avg, winRate, count, std } = args;
+
+  // sample weight (0..1), saturates after ~25 samples
+  const sampleW = clamp01(count / 25);
+
+  // stability: reward lower variance (std)
+  // if std is huge relative to avg, penalize heavily
+  const denom = Math.abs(avg) + 1e-9;
+  const volPenalty = clamp01(1 - Math.min(3, std / denom) / 3); // 1 good -> 0 bad
+
+  // winrate confidence (centered around 50%)
+  const wrW = clamp01((winRate - 0.45) / 0.35); // ~0 at 45%, ~1 at 80%
+
+  // avg normalization (soft)
+  const avgW = clamp01(Math.tanh(Math.abs(avg) / 20)); // tune later
+
+  const score01 = avgW * 0.45 + wrW * 0.35 + sampleW * 0.2;
+  const score = Math.round(100 * score01 * (0.65 + 0.35 * volPenalty));
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function stabilityLabel(firstAvg: number, secondAvg: number) {
+  const a = firstAvg;
+  const b = secondAvg;
+
+  // both positive or both negative -> stable direction
+  if (a >= 0 && b >= 0) return { text: "Stable ✅", cls: "pnl-positive" };
+  if (a <= 0 && b <= 0) return { text: "Stable ✅", cls: "pnl-positive" };
+
+  return { text: "Unstable ⚠️", cls: "pnl-negative" };
+}
+
 function badgeStyle(kind: "BEST" | "WORST") {
   return {
     display: "inline-flex",
@@ -188,6 +231,19 @@ function metaTextStyle(): React.CSSProperties {
   return { fontSize: 12, opacity: 0.85, lineHeight: 1.3 };
 }
 
+function splitPatternKey(key: string) {
+  // expected: "ADAUSDT LONG · RSI50-70 · Uptrend... · MACD Bull · Px>EMA20..."
+  const parts = String(key ?? "")
+    .split("·")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const head = parts[0] ?? "Pattern";
+  const rest = parts.slice(1);
+
+  return { head, badges: rest };
+}
+
 export default function IntelPage() {
   const router = useRouter();
   const { data } = useTradeSession();
@@ -197,6 +253,8 @@ export default function IntelPage() {
 
   // MVP timeframe selector (later: advanced)
   const [tf, setTf] = useState<Timeframe>("15m");
+
+  const [patternTab, setPatternTab] = useState<"BEST" | "WORST">("BEST");
 
   // selected position
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -215,6 +273,7 @@ export default function IntelPage() {
       side: "LONG" | "SHORT" | "UNKNOWN";
       net: number;
       entry: any | null;
+      entryPx?: number | null; // NEW
     }>
   >([]);
 
@@ -293,6 +352,8 @@ export default function IntelPage() {
           const rside = getSide(rp);
           const rnet = Number(rp?.netProfit ?? 0);
 
+          const { entryPx } = getEntryExitFromPosition(rp); // NEW
+
           const ropenedAt =
             parseIso(
               rp?.openedAt ?? rp?.openTime ?? rp?.entryTime ?? rp?.entryAt,
@@ -305,6 +366,7 @@ export default function IntelPage() {
               side: rside,
               net: rnet,
               entry: null,
+              entryPx: entryPx ?? null, // NEW
             });
             continue;
           }
@@ -322,6 +384,7 @@ export default function IntelPage() {
             side: rside,
             net: rnet,
             entry: ent,
+            entryPx: entryPx ?? null, // NEW
           });
         }
 
@@ -390,7 +453,6 @@ export default function IntelPage() {
   }, [selected, entrySnap, exitSnap]);
 
   const patterns = useMemo(() => {
-    // bucket by: RSI zone + trend + macd state
     function rsiBucket(rsi?: number | null) {
       if (rsi == null || !Number.isFinite(rsi)) return "RSI ?";
       if (rsi < 30) return "RSI<30";
@@ -399,9 +461,23 @@ export default function IntelPage() {
       return "RSI>70";
     }
 
+    type Bucket = {
+      key: string;
+      count: number;
+      wins: number;
+      net: number;
+      avg: number;
+      winRate: number;
+      std: number;
+      edge: number;
+      firstAvg: number;
+      secondAvg: number;
+      stability: { text: string; cls: string };
+    };
+
     const map = new Map<
       string,
-      { key: string; count: number; wins: number; net: number; avg: number }
+      { key: string; nets: number[]; wins: number }
     >();
 
     for (const r of batchIntel) {
@@ -410,38 +486,79 @@ export default function IntelPage() {
 
       const rb = rsiBucket(ind?.rsi14 ?? null);
       const tr = trendState(ind?.ema20 ?? null, ind?.ema50 ?? null);
-      const mc = macdState({
-        macd: ind?.macd?.macd ?? null,
-        signal: ind?.macd?.signal ?? null,
-      });
+      const mc = macdState(ind); // nutzt deinen robusten getMacdParts()
 
+      // OPTIONAL: symbol/side drin lassen (so wie du es hattest)
       const key = `${r.symbol} ${r.side} · ${rb} · ${tr} · ${mc}`;
 
-      const cur = map.get(key) ?? { key, count: 0, wins: 0, net: 0, avg: 0 };
-      cur.count += 1;
-      cur.net += Number(r.net ?? 0);
-      if ((r.net ?? 0) > 0) cur.wins += 1;
+      const cur = map.get(key) ?? { key, nets: [], wins: 0 };
+      const n = Number(r.net ?? 0);
+
+      cur.nets.push(n);
+      if (n > 0) cur.wins += 1;
 
       map.set(key, cur);
     }
 
-    const out = Array.from(map.values()).map((x) => ({
-      ...x,
-      avg: x.count ? x.net / x.count : 0,
-      winRate: x.count ? x.wins / x.count : 0,
-    }));
+    const out: Bucket[] = [];
 
-    // only meaningful buckets
+    for (const v of map.values()) {
+      const count = v.nets.length;
+      const net = v.nets.reduce((a, b) => a + b, 0);
+      const avg = count ? net / count : 0;
+      const winRate = count ? v.wins / count : 0;
+
+      // std dev
+      const mean = avg;
+      const variance =
+        count > 1
+          ? v.nets.reduce((a, x) => a + (x - mean) * (x - mean), 0) /
+            (count - 1)
+          : 0;
+      const std = Math.sqrt(Math.max(0, variance));
+
+      // stability split
+      const half = Math.floor(count / 2);
+      const first = v.nets.slice(0, Math.max(1, half));
+      const second = v.nets.slice(Math.max(1, half));
+      const firstAvg = first.length
+        ? first.reduce((a, b) => a + b, 0) / first.length
+        : 0;
+      const secondAvg = second.length
+        ? second.reduce((a, b) => a + b, 0) / second.length
+        : 0;
+      const stability = stabilityLabel(firstAvg, secondAvg);
+
+      const edge = edgeScore({ avg, winRate, count, std });
+
+      out.push({
+        key: v.key,
+        count,
+        wins: v.wins,
+        net,
+        avg,
+        winRate,
+        std,
+        edge,
+        firstAvg,
+        secondAvg,
+        stability,
+      });
+    }
+
+    // only meaningful
     const filtered = out.filter((x) => x.count >= 4);
 
+    // BEST = highest edge with net positive
     const best = [...filtered]
       .filter((x) => x.net > 0)
-      .sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0))
+      .sort((a, b) => b.edge - a.edge || b.net - a.net)
       .slice(0, 3);
 
+    // WORST = lowest edge with net negative (true leak)
     const worst = [...filtered]
       .filter((x) => x.net < 0)
-      .sort((a, b) => (a.avg ?? 0) - (b.avg ?? 0))
+      .sort((a, b) => a.edge - b.edge || a.net - b.net)
       .slice(0, 3);
 
     return { best, worst, sampleN: batchIntel.length };
@@ -493,7 +610,112 @@ export default function IntelPage() {
           </div>
 
           <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-            total net · {fmtShortMoney(net)}
+            avg {fmtMoney(Number(p?.avg ?? 0), DEFAULT_CCY)} · WR{" "}
+            {Math.round(wr * 100)}% · {count}x
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function PatternCard({ kind, p }: { kind: "BEST" | "WORST"; p: any }) {
+    const net = Number(p?.net ?? 0);
+    const count = Number(p?.count ?? 0);
+    const wr = Number(p?.winRate ?? 0);
+    const avg = Number(p?.avg ?? 0);
+
+    const { head, badges } = splitPatternKey(p?.key ?? "");
+
+    return (
+      <div
+        style={{
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "rgba(255,255,255,0.02)",
+          borderRadius: 16,
+          padding: 12,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        {/* Header row */}
+        <div
+          style={{ display: "flex", justifyContent: "space-between", gap: 12 }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={badgeStyle(kind)}>
+              {kind === "BEST" ? "EDGE" : "LEAK"}
+            </span>
+            <div style={{ fontWeight: 1000, fontSize: 13 }}>{head}</div>
+          </div>
+
+          <div style={{ textAlign: "right" }}>
+            <div
+              className={pnlClass(net)}
+              style={{ fontWeight: 1000, fontSize: 14 }}
+            >
+              {fmtMoney(net, DEFAULT_CCY)}
+            </div>
+            <div className="p-muted" style={{ fontSize: 12, marginTop: 4 }}>
+              total net
+            </div>
+          </div>
+        </div>
+
+        {/* Badges */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {badges.slice(0, 5).map((b: string) => (
+            <span
+              key={b}
+              className="badge"
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                opacity: 0.95,
+              }}
+            >
+              {b}
+            </span>
+          ))}
+          {badges.length > 5 ? (
+            <span
+              className="badge"
+              style={{ fontSize: 11, padding: "4px 8px" }}
+            >
+              +{badges.length - 5}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Stats */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 10,
+          }}
+        >
+          <div style={cardInner()}>
+            <div className="p-muted" style={metaTextStyle()}>
+              Samples
+            </div>
+            <div style={{ fontWeight: 1000 }}>{count}</div>
+          </div>
+
+          <div style={cardInner()}>
+            <div className="p-muted" style={metaTextStyle()}>
+              Win Rate
+            </div>
+            <div style={{ fontWeight: 1000 }}>{fmtPercent(wr)}</div>
+          </div>
+
+          <div style={cardInner()}>
+            <div className="p-muted" style={metaTextStyle()}>
+              Avg net
+            </div>
+            <div className={pnlClass(avg)} style={{ fontWeight: 1000 }}>
+              {fmtMoney(avg, DEFAULT_CCY)}
+            </div>
           </div>
         </div>
       </div>
@@ -1217,62 +1439,64 @@ export default function IntelPage() {
         </div>
       )}
 
+      {/* ---------- Pattern Detection ---------- */}
       <div className="card" style={{ padding: 16 }}>
-        <div style={{ fontWeight: 1000 }}>Pattern Detection</div>
-        <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-          Based on last {patterns.sampleN} positions (entry snapshots). Best =
-          profitable contexts, Worst = losing contexts.
-        </div>
-
         <div
           style={{
-            marginTop: 12,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            display: "flex",
+            justifyContent: "space-between",
             gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
-          <div style={cardInner()}>
-            <div style={{ fontWeight: 1000, marginBottom: 8 }}>
-              Best Contexts
+          <div>
+            <div style={{ fontWeight: 1000 }}>Pattern Detection</div>
+            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Based on last {patterns.sampleN} positions (entry snapshots).
+              Context = RSI + Trend + MACD + Price-vs-EMA20.
             </div>
-            {patterns.best.length ? (
-              patterns.best.map((x: any) => (
-                <div key={x.key} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 1000, fontSize: 12 }}>{x.key}</div>
-                  <div className="p-muted" style={{ fontSize: 12 }}>
-                    {x.count} samples · WR {fmtPercent(x.winRate)} · avg{" "}
-                    {fmtMoney(x.avg, DEFAULT_CCY)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-muted" style={{ fontSize: 12 }}>
-                Not enough repeated contexts yet.
-              </div>
-            )}
           </div>
 
-          <div style={cardInner()}>
-            <div style={{ fontWeight: 1000, marginBottom: 8 }}>
-              Worst Contexts
-            </div>
-            {patterns.worst.length ? (
-              patterns.worst.map((x: any) => (
-                <div key={x.key} style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 1000, fontSize: 12 }}>{x.key}</div>
-                  <div className="p-muted" style={{ fontSize: 12 }}>
-                    {x.count} samples · WR {fmtPercent(x.winRate)} · avg{" "}
-                    {fmtMoney(x.avg, DEFAULT_CCY)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-muted" style={{ fontSize: 12 }}>
-                Not enough repeated contexts yet.
-              </div>
-            )}
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className={
+                patternTab === "BEST" ? "btn-primary" : "btn-secondary"
+              }
+              onClick={() => setPatternTab("BEST")}
+              style={{ padding: "8px 12px", borderRadius: 999, fontSize: 12 }}
+            >
+              Best (Edges)
+            </button>
+            <button
+              className={
+                patternTab === "WORST" ? "btn-danger" : "btn-secondary"
+              }
+              onClick={() => setPatternTab("WORST")}
+              style={{ padding: "8px 12px", borderRadius: 999, fontSize: 12 }}
+            >
+              Worst (Leaks)
+            </button>
           </div>
+        </div>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+          {(patternTab === "BEST" ? patterns.best : patterns.worst).length ? (
+            (patternTab === "BEST" ? patterns.best : patterns.worst).map(
+              (p: any) => <PatternCard key={p.key} kind={patternTab} p={p} />,
+            )
+          ) : (
+            <div style={cardInner()}>
+              <div style={{ fontWeight: 1000 }}>
+                Not enough repeated contexts
+              </div>
+              <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                Trade more or increase the batch size until contexts repeat (min
+                4 samples per context).
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
