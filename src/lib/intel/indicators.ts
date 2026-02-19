@@ -3,7 +3,8 @@
 // Goal: compute indicators from OHLC candles and read a snapshot at a timestamp index.
 
 export type Candle = {
-  t: number; // unix ms
+  t: number; // open time (ms)
+  tc?: number; // close time (ms)  ✅ NEW
   o: number;
   h: number;
   l: number;
@@ -183,26 +184,26 @@ export function closes(candles: Candle[]) {
  * Strategy: last candle with t <= ts (floor).
  */
 export function indexAtOrBefore(candles: Candle[], ts: number): number | null {
-  if (!candles.length || !isFiniteNum(ts)) return null;
+  if (!candles?.length) return null;
 
-  // binary search
   let lo = 0;
   let hi = candles.length - 1;
-
-  if (candles[0].t > ts) return null;
-  if (candles[hi].t <= ts) return hi;
+  let ans = -1;
 
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    const t = candles[mid].t;
+    const c = candles[mid];
+    const tClose = c.ct ?? c.t; // ✅ prefer closeTime
 
-    if (t === ts) return mid;
-    if (t < ts) lo = mid + 1;
-    else hi = mid - 1;
+    if (tClose <= ts) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
   }
 
-  // hi ends as last index with t <= ts
-  return hi >= 0 ? hi : null;
+  return ans >= 0 ? ans : null;
 }
 
 /**

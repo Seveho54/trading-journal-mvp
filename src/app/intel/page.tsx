@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { useRouter } from "next/navigation";
-import { DEFAULT_CCY, fmtMoney } from "@/lib/format";
+import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 import { getSnapshotAt, type Timeframe } from "@/lib/intel/marketData";
 
 type AnyPos = any;
@@ -51,8 +51,25 @@ function getEntryExitFromPosition(p: any) {
 }
 
 function parseIso(x: any): string | null {
-  if (!x) return null;
-  const d = new Date(x);
+  if (x == null || x === "") return null;
+
+  // number or numeric string => epoch
+  const asNum =
+    typeof x === "number"
+      ? x
+      : typeof x === "string" && /^\d+(\.\d+)?$/.test(x.trim())
+        ? Number(x.trim())
+        : NaN;
+
+  if (Number.isFinite(asNum)) {
+    // seconds vs ms heuristic
+    const ms = asNum < 1e12 ? Math.round(asNum * 1000) : Math.round(asNum);
+    const d = new Date(ms);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+  }
+
+  // normal date string (ISO etc.)
+  const d = new Date(String(x));
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
@@ -72,6 +89,77 @@ function pnlClass(n: number) {
 function fmtNum(x: any, d = 2) {
   const n = Number(x);
   return Number.isFinite(n) ? n.toFixed(d) : "—";
+}
+
+function getMacdParts(ind: any): {
+  macd: number | null;
+  signal: number | null;
+  hist: number | null;
+} {
+  const m =
+    ind?.macd ?? ind?.MACD ?? ind?.macd_12_26_9 ?? ind?.macd12269 ?? null;
+
+  if (!m) return { macd: null, signal: null, hist: null };
+
+  const macd = m.macd ?? m.line ?? m.value ?? m.macdLine ?? null;
+  const signal = m.signal ?? m.signalLine ?? null;
+  const hist = m.hist ?? m.histogram ?? m.diff ?? null;
+
+  const toN = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : null);
+
+  return { macd: toN(macd), signal: toN(signal), hist: toN(hist) };
+}
+
+function macdState(ind: any) {
+  const { macd, signal } = getMacdParts(ind);
+  if (macd == null || signal == null) return "MACD ?";
+  return macd >= signal ? "MACD Bull" : "MACD Bear";
+}
+
+function classifyRSI(rsi?: number | null) {
+  if (rsi == null || !Number.isFinite(rsi)) return "—";
+  if (rsi < 30) return "Oversold (<30)";
+  if (rsi > 70) return "Overbought (>70)";
+  return "Neutral (30–70)";
+}
+
+function trendState(ema20?: number | null, ema50?: number | null) {
+  if (
+    ema20 == null ||
+    ema50 == null ||
+    !Number.isFinite(ema20) ||
+    !Number.isFinite(ema50)
+  )
+    return "—";
+  return ema20 >= ema50
+    ? "Uptrend (EMA20 ≥ EMA50)"
+    : "Downtrend (EMA20 < EMA50)";
+}
+
+function atrPercent(atr?: number | null, price?: number | null) {
+  if (
+    atr == null ||
+    price == null ||
+    !Number.isFinite(atr) ||
+    !Number.isFinite(price) ||
+    price <= 0
+  )
+    return null;
+  return atr / price; // e.g. 0.012 = 1.2%
+}
+
+function fmtIsoFromMs(ms: any) {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return "—";
+  return new Date(n).toISOString().slice(0, 16).replace("T", " ");
+}
+
+function confidenceLabel(idx: any) {
+  const i = Number(idx);
+  if (!Number.isFinite(i)) return { text: "—", cls: "pnl-zero" };
+  if (i >= 80) return { text: "OK", cls: "pnl-positive" };
+  if (i >= 40) return { text: "MEDIUM", cls: "pnl-zero" };
+  return { text: "LOW (not enough history)", cls: "pnl-negative" };
 }
 
 export default function IntelPage() {
@@ -94,6 +182,16 @@ export default function IntelPage() {
   const [entrySnap, setEntrySnap] = useState<any>(null);
   const [exitSnap, setExitSnap] = useState<any>(null);
 
+  const [batchIntel, setBatchIntel] = useState<
+    Array<{
+      id: string;
+      symbol: string;
+      side: "LONG" | "SHORT" | "UNKNOWN";
+      net: number;
+      entry: any | null;
+    }>
+  >([]);
+
   // keep list short so page stays compact
   const list = useMemo(() => {
     const out = [...positions];
@@ -106,6 +204,111 @@ export default function IntelPage() {
     return out.slice(0, 20);
   }, [positions]);
 
+  const loadIntel = useCallback(
+    async (p: AnyPos) => {
+      setLoading(true);
+      setErr(null);
+      setEntrySnap(null);
+      setExitSnap(null);
+
+      try {
+        const symbol = normalizeSymbol(p?.symbol);
+        const openedAt =
+          parseIso(p?.openedAt ?? p?.openTime ?? p?.entryTime ?? p?.entryAt) ??
+          null;
+        const closedAt =
+          parseIso(p?.closedAt ?? p?.closeTime ?? p?.exitTime ?? p?.exitAt) ??
+          null;
+
+        if (!openedAt)
+          throw new Error("Position has no valid openedAt timestamp.");
+
+        const entry = await getSnapshotAt({
+          symbol,
+          tf,
+          isoTime: openedAt,
+          lookbackDays: 120,
+        });
+
+        const exit = closedAt
+          ? await getSnapshotAt({
+              symbol,
+              tf,
+              isoTime: closedAt,
+              lookbackDays: 120,
+            })
+          : null;
+
+        setEntrySnap(entry);
+        setExitSnap(exit);
+
+        // ---- Batch: last N positions for pattern detection (entry snapshots only)
+        const N = 60;
+        const recent = [...positions]
+          .slice()
+          .sort((a, b) =>
+            String(b?.closedAt ?? b?.openedAt ?? "").localeCompare(
+              String(a?.closedAt ?? a?.openedAt ?? ""),
+            ),
+          )
+          .slice(0, N);
+
+        const batch: Array<{
+          id: string;
+          symbol: string;
+          side: "LONG" | "SHORT" | "UNKNOWN";
+          net: number;
+          entry: any | null;
+        }> = [];
+
+        for (const rp of recent) {
+          const rid = String(rp?.id ?? rp?._id ?? rp?.uid ?? "");
+          const rsym = normalizeSymbol(rp?.symbol);
+          const rside = getSide(rp);
+          const rnet = Number(rp?.netProfit ?? 0);
+
+          const ropenedAt =
+            parseIso(
+              rp?.openedAt ?? rp?.openTime ?? rp?.entryTime ?? rp?.entryAt,
+            ) ?? null;
+
+          if (!ropenedAt || rsym === "—") {
+            batch.push({
+              id: rid,
+              symbol: rsym,
+              side: rside,
+              net: rnet,
+              entry: null,
+            });
+            continue;
+          }
+
+          const ent = await getSnapshotAt({
+            symbol: rsym,
+            tf,
+            isoTime: ropenedAt,
+            lookbackDays: 120,
+          });
+
+          batch.push({
+            id: rid,
+            symbol: rsym,
+            side: rside,
+            net: rnet,
+            entry: ent,
+          });
+        }
+
+        setBatchIntel(batch);
+      } catch (e: any) {
+        setErr(e?.message ?? "Intel load failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [tf],
+  );
+
   const selected = useMemo(() => {
     if (!selectedId) return null;
     return (
@@ -115,51 +318,109 @@ export default function IntelPage() {
     );
   }, [selectedId, list]);
 
-  async function loadIntel(p: AnyPos) {
-    setLoading(true);
-    setErr(null);
-    setEntrySnap(null);
-    setExitSnap(null);
+  const intelSummary = useMemo(() => {
+    const net = Number(selected?.netProfit ?? 0);
 
-    try {
-      const symbol = normalizeSymbol(p?.symbol);
-      const openedAt =
-        parseIso(p?.openedAt ?? p?.openTime ?? p?.entryTime ?? p?.entryAt) ??
-        null;
-      const closedAt =
-        parseIso(p?.closedAt ?? p?.closeTime ?? p?.exitTime ?? p?.exitAt) ??
-        null;
+    const e = entrySnap?.indicators;
+    const x = exitSnap?.indicators;
 
-      if (!openedAt) {
-        throw new Error("Position has no valid openedAt timestamp.");
-      }
+    const entryClose = Number(entrySnap?.candle?.c ?? NaN);
+    const exitClose = Number(exitSnap?.candle?.c ?? NaN);
 
-      // entry snapshot (required)
-      const entry = await getSnapshotAt({
-        symbol,
-        tf,
-        isoTime: openedAt,
-        lookbackDays: 120,
-      });
+    const entryRsi = e?.rsi14 ?? null;
+    const exitRsi = x?.rsi14 ?? null;
 
-      // exit snapshot (optional)
-      const exit = closedAt
-        ? await getSnapshotAt({
-            symbol,
-            tf,
-            isoTime: closedAt,
-            lookbackDays: 120,
-          })
-        : null;
+    const entryMacd = e?.macd?.macd ?? null;
+    const entrySig = e?.macd?.signal ?? null;
 
-      setEntrySnap(entry);
-      setExitSnap(exit);
-    } catch (e: any) {
-      setErr(e?.message ?? "Intel load failed");
-    } finally {
-      setLoading(false);
+    const entryEma20 = e?.ema20 ?? null;
+    const entryEma50 = e?.ema50 ?? null;
+
+    const entryAtr = e?.atr14 ?? null;
+
+    const atrPct = atrPercent(
+      entryAtr,
+      Number.isFinite(entryClose) ? entryClose : null,
+    );
+
+    const action =
+      net >= 0
+        ? "Try to repeat this context (same trend + momentum) with strict risk."
+        : "This context looks risky for your style — consider avoiding or reducing size.";
+
+    return {
+      net,
+      entry: {
+        rsiLabel: classifyRSI(entryRsi),
+        macdLabel: macdState(entryMacd, entrySig),
+        trendLabel: trendState(entryEma20, entryEma50),
+        atrPct,
+      },
+      exit: {
+        rsiLabel: classifyRSI(exitRsi),
+      },
+      action,
+    };
+  }, [selected, entrySnap, exitSnap]);
+
+  const patterns = useMemo(() => {
+    // bucket by: RSI zone + trend + macd state
+    function rsiBucket(rsi?: number | null) {
+      if (rsi == null || !Number.isFinite(rsi)) return "RSI ?";
+      if (rsi < 30) return "RSI<30";
+      if (rsi < 50) return "RSI30-50";
+      if (rsi < 70) return "RSI50-70";
+      return "RSI>70";
     }
-  }
+
+    const map = new Map<
+      string,
+      { key: string; count: number; wins: number; net: number; avg: number }
+    >();
+
+    for (const r of batchIntel) {
+      const ind = r.entry?.indicators;
+      if (!ind) continue;
+
+      const rb = rsiBucket(ind?.rsi14 ?? null);
+      const tr = trendState(ind?.ema20 ?? null, ind?.ema50 ?? null);
+      const mc = macdState(ind?.macd?.macd ?? null, ind?.macd?.signal ?? null);
+
+      const key = `${r.symbol} ${r.side} · ${rb} · ${tr} · ${mc}`;
+
+      const cur = map.get(key) ?? { key, count: 0, wins: 0, net: 0, avg: 0 };
+      cur.count += 1;
+      cur.net += Number(r.net ?? 0);
+      if ((r.net ?? 0) > 0) cur.wins += 1;
+
+      map.set(key, cur);
+    }
+
+    const out = Array.from(map.values()).map((x) => ({
+      ...x,
+      avg: x.count ? x.net / x.count : 0,
+      winRate: x.count ? x.wins / x.count : 0,
+    }));
+
+    // only meaningful buckets
+    const filtered = out.filter((x) => x.count >= 4);
+
+    const best = [...filtered]
+      .filter((x) => x.net > 0)
+      .sort((a, b) => (b.avg ?? 0) - (a.avg ?? 0))
+      .slice(0, 3);
+
+    const worst = [...filtered]
+      .filter((x) => x.net < 0)
+      .sort((a, b) => (a.avg ?? 0) - (b.avg ?? 0))
+      .slice(0, 3);
+
+    return { best, worst, sampleN: batchIntel.length };
+  }, [batchIntel]);
+
+  useEffect(() => {
+    if (selected) loadIntel(selected);
+  }, [tf, selectedId, loadIntel, selected]);
 
   return (
     <main
@@ -407,6 +668,108 @@ export default function IntelPage() {
                   </div>
                 </div>
 
+                {/* Mentor Intel Summary (micro) */}
+                <div style={cardInner()}>
+                  <div style={{ fontWeight: 1000 }}>Mentor Intel Summary</div>
+                  <div
+                    className="p-muted"
+                    style={{ marginTop: 6, fontSize: 12 }}
+                  >
+                    Quick read of indicator context at entry/exit (uses fetched
+                    snapshot).
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "grid",
+                      gap: 8,
+                      fontSize: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <span className="p-muted">Trade result</span>
+                      <span
+                        className={pnlClass(intelSummary.net)}
+                        style={{ fontWeight: 1000 }}
+                      >
+                        {fmtMoney(intelSummary.net, DEFAULT_CCY)}
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: 6, fontWeight: 1000 }}>
+                      Entry context
+                    </div>
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span className="p-muted">RSI</span>
+                        <span style={{ fontWeight: 1000 }}>
+                          {intelSummary.entry.rsiLabel}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span className="p-muted">MACD</span>
+                        <span style={{ fontWeight: 1000 }}>
+                          {intelSummary.entry.macdLabel}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span className="p-muted">Trend</span>
+                        <span style={{ fontWeight: 1000 }}>
+                          {intelSummary.entry.trendLabel}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <span className="p-muted">Volatility (ATR)</span>
+                        <span style={{ fontWeight: 1000 }}>
+                          {intelSummary.entry.atrPct != null
+                            ? `${(intelSummary.entry.atrPct * 100).toFixed(2)}%`
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 6, fontWeight: 1000 }}>Action</div>
+                    <div className="p-muted" style={{ lineHeight: 1.5 }}>
+                      {intelSummary.action}
+                    </div>
+                  </div>
+                </div>
+
                 {loading ? (
                   <div style={cardInner()}>
                     <div style={{ fontWeight: 1000 }}>
@@ -454,6 +817,31 @@ export default function IntelPage() {
                         Candle close at / before entry time
                       </div>
 
+                      {(() => {
+                        const conf = confidenceLabel(entrySnap?.idx);
+                        return (
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 6, fontSize: 12 }}
+                          >
+                            snapshot candle time:{" "}
+                            <b style={{ color: "var(--text)" }}>
+                              {fmtIsoFromMs(
+                                entrySnap?.candle?.tc ?? entrySnap?.candle?.t,
+                              )}
+                            </b>
+                            {" · "}
+                            confidence:{" "}
+                            <span
+                              className={conf.cls}
+                              style={{ fontWeight: 1000 }}
+                            >
+                              {conf.text}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
                       <div
                         style={{
                           marginTop: 10,
@@ -462,12 +850,20 @@ export default function IntelPage() {
                           fontSize: 12,
                         }}
                       >
-                        <div className="p-muted">
-                          candle close:{" "}
-                          <b style={{ color: "var(--text)" }}>
-                            {fmtNum(entrySnap?.candle?.c, 6)}
-                          </b>
-                        </div>
+                        {(() => {
+                          const { entryPx } =
+                            getEntryExitFromPosition(selected);
+                          return (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <div className="p-muted">
+                                trade entry price:{" "}
+                                <b style={{ color: "var(--text)" }}>
+                                  {entryPx != null ? fmtNum(entryPx, 6) : "—"}
+                                </b>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div
                           style={{
@@ -513,7 +909,43 @@ export default function IntelPage() {
                           >
                             <span>macd</span>
                             <b>
-                              {fmtNum(entrySnap?.indicators?.macd?.macd, 6)}
+                              {(() => {
+                                const m = getMacdParts(entrySnap?.indicators);
+                                return (
+                                  <>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        gap: 10,
+                                      }}
+                                    >
+                                      <span>macd</span>
+                                      <b>{fmtNum(m.macd, 6)}</b>
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        gap: 10,
+                                      }}
+                                    >
+                                      <span>signal</span>
+                                      <b>{fmtNum(m.signal, 6)}</b>
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        gap: 10,
+                                      }}
+                                    >
+                                      <span>hist</span>
+                                      <b>{fmtNum(m.hist, 6)}</b>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </b>
                           </div>
                           <div
@@ -554,6 +986,29 @@ export default function IntelPage() {
                         Candle close at / before exit time
                       </div>
 
+                      {(() => {
+                        const conf = confidenceLabel(exitSnap?.idx);
+                        return (
+                          <div
+                            className="p-muted"
+                            style={{ marginTop: 6, fontSize: 12 }}
+                          >
+                            snapshot candle time:{" "}
+                            <b style={{ color: "var(--text)" }}>
+                              {fmtIsoFromMs(exitSnap?.candle?.t)}
+                            </b>
+                            {" · "}
+                            confidence:{" "}
+                            <span
+                              className={conf.cls}
+                              style={{ fontWeight: 1000 }}
+                            >
+                              {conf.text}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
                       {!exitSnap ? (
                         <div
                           className="p-muted"
@@ -570,12 +1025,20 @@ export default function IntelPage() {
                             fontSize: 12,
                           }}
                         >
-                          <div className="p-muted">
-                            candle close:{" "}
-                            <b style={{ color: "var(--text)" }}>
-                              {fmtNum(exitSnap?.candle?.c, 6)}
-                            </b>
-                          </div>
+                          {(() => {
+                            const { exitPx } =
+                              getEntryExitFromPosition(selected);
+                            return (
+                              <div style={{ display: "grid", gap: 6 }}>
+                                <div className="p-muted">
+                                  trade exit price:{" "}
+                                  <b style={{ color: "var(--text)" }}>
+                                    {exitPx != null ? fmtNum(exitPx, 6) : "—"}
+                                  </b>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           <div
                             style={{
@@ -675,6 +1138,65 @@ export default function IntelPage() {
           </div>
         </div>
       )}
+
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 1000 }}>Pattern Detection</div>
+        <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+          Based on last {patterns.sampleN} positions (entry snapshots). Best =
+          profitable contexts, Worst = losing contexts.
+        </div>
+
+        <div
+          style={{
+            marginTop: 12,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+          }}
+        >
+          <div style={cardInner()}>
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>
+              Best Contexts
+            </div>
+            {patterns.best.length ? (
+              patterns.best.map((x: any) => (
+                <div key={x.key} style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 1000, fontSize: 12 }}>{x.key}</div>
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    {x.count} samples · WR {fmtPercent(x.winRate)} · avg{" "}
+                    {fmtMoney(x.avg, DEFAULT_CCY)}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                Not enough repeated contexts yet.
+              </div>
+            )}
+          </div>
+
+          <div style={cardInner()}>
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>
+              Worst Contexts
+            </div>
+            {patterns.worst.length ? (
+              patterns.worst.map((x: any) => (
+                <div key={x.key} style={{ marginBottom: 10 }}>
+                  <div style={{ fontWeight: 1000, fontSize: 12 }}>{x.key}</div>
+                  <div className="p-muted" style={{ fontSize: 12 }}>
+                    {x.count} samples · WR {fmtPercent(x.winRate)} · avg{" "}
+                    {fmtMoney(x.avg, DEFAULT_CCY)}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-muted" style={{ fontSize: 12 }}>
+                Not enough repeated contexts yet.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
