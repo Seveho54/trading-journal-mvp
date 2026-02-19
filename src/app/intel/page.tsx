@@ -384,7 +384,10 @@ export default function IntelPage() {
 
       const rb = rsiBucket(ind?.rsi14 ?? null);
       const tr = trendState(ind?.ema20 ?? null, ind?.ema50 ?? null);
-      const mc = macdState(ind?.macd?.macd ?? null, ind?.macd?.signal ?? null);
+      const mc = macdState({
+        macd: ind?.macd?.macd ?? null,
+        signal: ind?.macd?.signal ?? null,
+      });
 
       const key = `${r.symbol} ${r.side} · ${rb} · ${tr} · ${mc}`;
 
