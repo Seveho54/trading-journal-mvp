@@ -273,7 +273,7 @@ export default function IntelPage() {
       side: "LONG" | "SHORT" | "UNKNOWN";
       net: number;
       entry: any | null;
-      entryPx?: number | null; // NEW
+      entryPx: number | null; // ✅ HIER hinzufügen
     }>
   >([]);
 
