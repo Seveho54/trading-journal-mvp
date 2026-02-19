@@ -1629,9 +1629,26 @@ export default function MentorPage() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 1000, fontSize: 18 }}>Mentor</div>
-            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-              Behavior insights (rule-based MVP). AI comes later.
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: 18 }}>Mentor</div>
+
+              <span className="badge badge-purple">BITGET ONLY · BETA</span>
+              <span className="badge badge-blue">EDUCATIONAL ANALYTICS</span>
+            </div>
+
+            <div
+              className="p-muted"
+              style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}
+            >
+              Built for Bitget Futures traders. Analytics only — no financial
+              advice.
             </div>
           </div>
 

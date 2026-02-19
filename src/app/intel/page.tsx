@@ -747,9 +747,25 @@ export default function IntelPage() {
           }}
         >
           <div>
-            <div style={{ fontWeight: 1000, fontSize: 18 }}>Intel</div>
-            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-              Indicator snapshots at Entry/Exit (real market candles). MVP v1.
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: 18 }}>Intel</div>
+
+              <span className="badge badge-purple">BITGET ONLY · BETA</span>
+              <span className="badge badge-blue">EDUCATIONAL ANALYTICS</span>
+            </div>
+
+            <div
+              className="p-muted"
+              style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}
+            >
+              Indicator snapshots for learning & review. Not financial advice.
             </div>
           </div>
 
