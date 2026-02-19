@@ -344,6 +344,7 @@ export default function IntelPage() {
           side: "LONG" | "SHORT" | "UNKNOWN";
           net: number;
           entry: any | null;
+          entryPx: number | null; // ✅ hinzufügen
         }> = [];
 
         for (const rp of recent) {
