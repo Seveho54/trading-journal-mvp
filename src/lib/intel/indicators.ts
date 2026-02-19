@@ -193,7 +193,7 @@ export function indexAtOrBefore(candles: Candle[], ts: number): number | null {
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     const c = candles[mid];
-    const tClose = c.ct ?? c.t; // ✅ prefer closeTime
+    const tClose = c.tc ?? c.t; // ✅ prefer closeTime
 
     if (tClose <= ts) {
       ans = mid;
