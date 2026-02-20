@@ -31,7 +31,7 @@ function safeNumber(x: any): number | null {
 
 export function analyzeEquity(events: RiskEvent[]): EquityAnalysis {
   const accountEvents = events
-    .filter((e): e is AccountSnapshotEvent => e.type === "ACCOUNT_SNAPSHOT")
+    .filter((e) => e.type === "EQUITY_SNAPSHOT")
     .sort((a, b) => a.ts - b.ts);
 
   if (!accountEvents.length) {
