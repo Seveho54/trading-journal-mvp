@@ -1,6 +1,6 @@
 // src/core/risk/riskOS.ts
 
-import type { RiskEvent } from "./schema";
+import type { RiskEvent } from "./types";
 import { buildBehaviorBaselines } from "./engines/baselineEngine";
 import { detectDeviations } from "./engines/deviationEngine";
 import { buildActions } from "./engines/actionsEngine";
@@ -18,7 +18,7 @@ export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
   const daily = analyzeDailyLoss({
     events: args.events,
     currentEquity: equity.currentEquity,
-    nowTs: args.nowTs,
+    currentTs: args.nowTs,
   });
 
   const baselines = buildBehaviorBaselines({

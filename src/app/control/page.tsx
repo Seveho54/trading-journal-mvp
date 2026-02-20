@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTradeSession } from "../providers/TradeSessionProvider";
 import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 import { mapTradesToRiskEvents } from "@/core/risk/mappers/mapTradesToRiskEvents";
+import type { RiskEvent } from "@/core/risk/types";
 
 // ✅ Risk OS Orchestrator (dein Kernel)
 import { computeRiskOS } from "@/core/risk/riskOS";
