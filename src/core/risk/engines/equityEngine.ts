@@ -51,7 +51,7 @@ export function analyzeEquity(events: RiskEvent[]): EquityAnalysis {
   const drawdownCurve: DrawdownPoint[] = [];
 
   for (const e of accountEvents) {
-    const equity = safeNumber(e.data.equity);
+    const equity = safeNumber(e.equity ?? e.meta?.equity);
 
     // Skip invalid equity
     if (equity == null) continue;
