@@ -131,9 +131,7 @@ function findLatestPositionsEvent(events: RiskEvent[]) {
 
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
-    // @ts-ignore
     const t = String((e as any).type ?? "");
-    // @ts-ignore
     const ts = Number((e as any).ts);
 
     if (!TYPES.has(t)) continue;
@@ -152,7 +150,6 @@ function extractPositions(e: RiskEvent): LivePosition[] {
   // e.data.state.positions
   // etc.
 
-  // @ts-ignore
   const data = (e as any).data ?? {};
 
   const rawList =

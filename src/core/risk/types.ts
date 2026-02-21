@@ -10,6 +10,8 @@ export type RiskEvent = {
   type: RiskEventType;
   ts: number;
 
+  exchange?: string;
+
   // trade data
   symbol?: string;
   side?: "LONG" | "SHORT";
