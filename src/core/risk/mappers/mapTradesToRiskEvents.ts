@@ -13,31 +13,47 @@ function num(x: any): number {
 export function mapTradesToRiskEvents(trades: any[]): RiskEvent[] {
   const events: RiskEvent[] = [];
 
-  for (const t of trades) {
+  let runningEquity = 10000;
+
+  for (const t of trades.sort(
+    (a, b) =>
+      toTs(a?.timestamp ?? a?.time ?? a?.date ?? a?.closedAt ?? a?.executedAt) -
+      toTs(b?.timestamp ?? b?.time ?? b?.date ?? b?.closedAt ?? b?.executedAt),
+  )) {
     const ts = toTs(
       t?.timestamp ?? t?.time ?? t?.date ?? t?.closedAt ?? t?.executedAt,
     );
 
     const realized = num(t?.realizedPnl ?? t?.netProfit ?? 0);
+    const fee = num(t?.fee ?? t?.commission ?? 0);
 
+    runningEquity += realized - fee;
+
+    // TRADE_CLOSE event
     events.push({
       id: String(t?.id ?? `${ts}-${Math.random()}`),
       type: "TRADE_CLOSE",
       ts,
-
       symbol: String(t?.symbol ?? ""),
       side: String(t?.positionSide ?? t?.side ?? "")
         .toUpperCase()
         .includes("SHORT")
         ? "SHORT"
         : "LONG",
-
       qty: num(t?.quantity ?? t?.qty),
       price: num(t?.price ?? t?.exitPrice ?? t?.avgPrice),
       realizedPnl: realized,
-      fee: num(t?.fee ?? t?.commission ?? 0),
+      fee,
+    });
+
+    // EQUITY_SNAPSHOT event
+    events.push({
+      id: `eq-${ts}`,
+      type: "EQUITY_SNAPSHOT",
+      ts,
+      equity: runningEquity,
     });
   }
 
-  return events.sort((a, b) => a.ts - b.ts);
+  return events;
 }

@@ -25,7 +25,6 @@ export type EquityAnalysis = {
 function safeNumber(x: any): number | null {
   const n = Number(x);
   if (!Number.isFinite(n)) return null;
-  if (n < 0) return 0; // equity should not go negative
   return n;
 }
 
