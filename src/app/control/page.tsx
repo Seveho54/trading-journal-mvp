@@ -87,63 +87,94 @@ export default function ControlCenterPage() {
   useEffect(() => {
     if (!events.length) return;
 
+    const ac = new AbortController();
+
     async function runRisk() {
-      // 1) Equity Snapshot (wenn vorhanden)
-      const equityEvent: RiskEvent[] =
-        liveEquity != null
-          ? [
-              {
-                id: `eq-${liveTs ?? Date.now()}`,
-                type: "EQUITY_SNAPSHOT",
-                ts: liveTs ?? Date.now(),
-                equity: liveEquity,
-                meta: { source: "bitget" },
-              },
-            ]
-          : [];
-
-      // 2) Combine: Equity zuerst, dann Trades
-      const combinedEvents = [...equityEvent, ...events].sort(
-        (a, b) => a.ts - b.ts,
-      );
-
-      const res = await fetch("/api/risk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events: combinedEvents }),
-      });
-
-      const text = await res.text();
-
-      // Debug: wenn leer, siehst du sofort warum
-      if (!text) {
-        console.error("API returned empty body", {
-          status: res.status,
-          ok: res.ok,
-        });
-        setOs(null);
-        return;
-      }
-
-      let json: any;
       try {
-        json = JSON.parse(text);
-      } catch (e) {
-        console.error("API returned non-JSON:", text.slice(0, 300));
-        setOs(null);
-        return;
-      }
+        // 1) Equity Snapshot (wenn vorhanden)
+        const equityEvent: RiskEvent[] =
+          liveEquity != null
+            ? [
+                {
+                  id: `eq-${liveTs ?? Date.now()}`,
+                  type: "EQUITY_SNAPSHOT",
+                  ts: liveTs ?? Date.now(),
+                  equity: liveEquity,
+                  meta: { source: "bitget" },
+                },
+              ]
+            : [];
 
-      if (!res.ok) {
-        console.error("API error payload:", json);
-        setOs(null);
-        return;
-      }
+        // 2) Combine: Equity zuerst, dann Trades
+        const combinedEvents = [...equityEvent, ...events].sort(
+          (a, b) => a.ts - b.ts,
+        );
 
-      setOs(json);
+        const res = await fetch("/api/risk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ events: combinedEvents }),
+          signal: ac.signal,
+        });
+
+        const contentType = res.headers.get("content-type") ?? "";
+        const text = await res.text();
+
+        // A) Empty body => meistens 405/500 / Route nicht getroffen
+        if (!text) {
+          console.error("API returned empty body", {
+            status: res.status,
+            ok: res.ok,
+          });
+          setOs(null);
+          return;
+        }
+
+        // B) Wenn HTML o.ä. kommt (z.B. Error page), nicht JSON-parsen
+        if (!contentType.includes("application/json")) {
+          console.error("API returned non-JSON content-type:", contentType, {
+            status: res.status,
+            ok: res.ok,
+            sample: text.slice(0, 300),
+          });
+          setOs(null);
+          return;
+        }
+
+        // C) JSON parse
+        let json: any;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          console.error("API returned invalid JSON:", text.slice(0, 300));
+          setOs(null);
+          return;
+        }
+
+        // D) HTTP error payload loggen
+        if (!res.ok) {
+          console.error("API error payload:", json, { status: res.status });
+          setOs(null);
+          return;
+        }
+
+        // E) ✅ Unterstütze beide Response-Shapes:
+        // - { os: ... }
+        // - direkt: { equity, exposure, ... }
+        setOs(json?.os ?? json);
+      } catch (err: any) {
+        // Abort ignorieren
+        if (err?.name === "AbortError") return;
+        console.error("runRisk crashed:", err);
+        setOs(null);
+      }
     }
 
     runRisk();
+
+    return () => {
+      ac.abort();
+    };
   }, [events, liveEquity, liveTs]);
 
   const topAlerts = useMemo(() => {
