@@ -6,8 +6,6 @@ import { useTradeSession } from "../providers/TradeSessionProvider";
 import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 import { mapTradesToRiskEvents } from "@/core/risk/mappers/mapTradesToRiskEvents";
 import type { RiskEvent } from "@/core/risk/types";
-// ✅ Risk OS Orchestrator (dein Kernel)
-import { computeRiskOS } from "@/core/risk/riskOS";
 
 function cardInner(): React.CSSProperties {
   return {
@@ -49,6 +47,39 @@ export default function ControlCenterPage() {
     return mapTradesToRiskEvents(data?.trades ?? []);
   }, [data]);
 
+  const [liveEquity, setLiveEquity] = useState<number | null>(null);
+  const [liveTs, setLiveTs] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadEquity() {
+      try {
+        const res = await fetch("/api/bitget/equity", { cache: "no-store" });
+        const json = await res.json();
+
+        if (!alive) return;
+
+        const eq = Number(json?.equity ?? 0);
+        const ts = Number(json?.ts ?? Date.now());
+
+        setLiveEquity(Number.isFinite(eq) ? eq : null);
+        setLiveTs(Number.isFinite(ts) ? ts : Date.now());
+      } catch {
+        if (!alive) return;
+        setLiveEquity(null);
+        setLiveTs(null);
+      }
+    }
+
+    loadEquity();
+    const id = setInterval(loadEquity, 10_000); // alle 10s
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const hasData = events.length > 0;
 
   const [os, setOs] = useState<any>(null);
@@ -57,20 +88,63 @@ export default function ControlCenterPage() {
     if (!events.length) return;
 
     async function runRisk() {
+      // 1) Equity Snapshot (wenn vorhanden)
+      const equityEvent: RiskEvent[] =
+        liveEquity != null
+          ? [
+              {
+                id: `eq-${liveTs ?? Date.now()}`,
+                type: "EQUITY_SNAPSHOT",
+                ts: liveTs ?? Date.now(),
+                equity: liveEquity,
+                meta: { source: "bitget" },
+              },
+            ]
+          : [];
+
+      // 2) Combine: Equity zuerst, dann Trades
+      const combinedEvents = [...equityEvent, ...events].sort(
+        (a, b) => a.ts - b.ts,
+      );
+
       const res = await fetch("/api/risk", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ events }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events: combinedEvents }),
       });
 
-      const json = await res.json();
+      const text = await res.text();
+
+      // Debug: wenn leer, siehst du sofort warum
+      if (!text) {
+        console.error("API returned empty body", {
+          status: res.status,
+          ok: res.ok,
+        });
+        setOs(null);
+        return;
+      }
+
+      let json: any;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error("API returned non-JSON:", text.slice(0, 300));
+        setOs(null);
+        return;
+      }
+
+      if (!res.ok) {
+        console.error("API error payload:", json);
+        setOs(null);
+        return;
+      }
+
       setOs(json);
     }
 
     runRisk();
-  }, [events]);
+  }, [events, liveEquity, liveTs]);
 
   const topAlerts = useMemo(() => {
     if (!os) return [];

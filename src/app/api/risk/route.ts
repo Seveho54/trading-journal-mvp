@@ -1,21 +1,36 @@
-import { NextResponse } from "next/server";
 import { computeRiskOS } from "@/core/risk/riskOS";
-import { riskEventStore } from "@/core/risk/store/eventStore";
+import type { RiskEvent } from "@/core/risk/types";
 
-export async function GET() {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(req: Request) {
   try {
-    const events = riskEventStore.getAll();
+    const body = await req.json().catch(() => null);
 
-    const os = computeRiskOS({
-      events,
-      nowTs: Date.now(),
-    });
+    const events = (body?.events ?? []) as RiskEvent[];
+    if (!Array.isArray(events) || events.length === 0) {
+      return Response.json(
+        { ok: false, error: "No events provided" },
+        { status: 400 },
+      );
+    }
 
-    return NextResponse.json(os);
-  } catch {
-    return NextResponse.json(
-      { error: "RiskOS execution failed" },
+    const os = computeRiskOS({ events, nowTs: Date.now() });
+
+    return Response.json({ ok: true, os }, { status: 200 });
+  } catch (err: any) {
+    return Response.json(
+      { ok: false, error: err?.message ?? "Unknown error" },
       { status: 500 },
     );
   }
+}
+
+// optional: damit GET im Browser nicht 405 macht
+export async function GET() {
+  return Response.json(
+    { ok: false, error: "Use POST with { events: RiskEvent[] }" },
+    { status: 405 },
+  );
 }
