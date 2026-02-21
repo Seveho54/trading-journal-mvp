@@ -45,32 +45,32 @@ export default function ControlCenterPage() {
   const router = useRouter();
   const { data } = useTradeSession();
 
-  const [os, setOs] = useState<any>(null);
-
   const events = useMemo(() => {
-    if (!data) return [];
-    return mapTradesToRiskEvents(data.trades ?? []);
+    return mapTradesToRiskEvents(data?.trades ?? []);
   }, [data]);
 
   const hasData = events.length > 0;
 
-  useEffect(() => {
-    if (!data || !data.trades || data.trades.length === 0) return;
+  const [os, setOs] = useState<any>(null);
 
-    async function run() {
-      await fetch("/api/mappers", {
+  useEffect(() => {
+    if (!events.length) return;
+
+    async function runRisk() {
+      const res = await fetch("/api/risk", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trades: data.trades }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ events }),
       });
 
-      const res = await fetch("/api/risk");
       const json = await res.json();
       setOs(json);
     }
 
-    run();
-  }, [data]);
+    runRisk();
+  }, [events]);
 
   const topAlerts = useMemo(() => {
     if (!os) return [];
@@ -96,10 +96,6 @@ export default function ControlCenterPage() {
     const acts = (os.actions?.actions ?? os.actions ?? []) as any[];
     return acts.slice(0, 3);
   }, [os]);
-
-  if (!data) {
-    return <div>Loading...</div>;
-  }
 
   return (
     <main
