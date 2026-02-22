@@ -92,21 +92,24 @@ export default function ControlCenterPage() {
     async function runRisk() {
       try {
         // 1) Equity Snapshot (wenn vorhanden)
-        const equityEvent: RiskEvent[] =
-          liveEquity != null
-            ? [
-                {
-                  id: `eq-${liveTs ?? Date.now()}`,
-                  type: "EQUITY_SNAPSHOT",
-                  ts: liveTs ?? Date.now(),
-                  equity: liveEquity,
-                  meta: { source: "bitget" },
-                },
-              ]
-            : [];
+
+        // 1) Hole Snapshot vom Backend
+        const snapRes = await fetch("/api/bitget/snapshot", {
+          cache: "no-store",
+        });
+
+        const snapJson = await snapRes.json().catch(() => null);
+
+        let snapshotEvents: RiskEvent[] = [];
+
+        if (snapRes.ok && snapJson?.ok && Array.isArray(snapJson.events)) {
+          snapshotEvents = snapJson.events;
+        } else {
+          console.error("Snapshot failed", snapJson);
+        }
 
         // 2) Combine: Equity zuerst, dann Trades
-        const combinedEvents = [...equityEvent, ...events].sort(
+        const combinedEvents = [...snapshotEvents, ...events].sort(
           (a, b) => a.ts - b.ts,
         );
 

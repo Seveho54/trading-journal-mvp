@@ -6,82 +6,119 @@ import type { BitgetResponse } from "@/lib/bitget/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type BitgetMixAccountResp = {
-  code: string;
-  msg: string;
-  data?: {
-    // Bitget liefert je nach Endpoint/Account Struktur leicht variierend.
-    // Wir lesen defensiv mehrere mögliche Felder aus.
-    usdtEquity?: string | number;
-    equity?: string | number;
-    accountEquity?: string | number;
-    available?: string | number;
-    // manchmal nested / arrays – lassen wir erstmal außen vor
-    [k: string]: any;
-  };
-};
-
 function toNum(x: any): number | null {
   const n = Number(x);
   return Number.isFinite(n) ? n : null;
 }
 
-type MixAccountData = any; // später typisieren
+function readEquityFromAccountRow(row: any): number | null {
+  // je nach Konto/Endpoint heißen Felder unterschiedlich
+  return (
+    toNum(row?.accountEquity) ??
+    toNum(row?.equity) ??
+    toNum(row?.usdtEquity) ??
+    toNum(row?.totalEquity) ??
+    null
+  );
+}
+
+async function fetchAccounts(productType: string) {
+  // ✅ LIST endpoint (nicht /account/account!)
+  const resp = await bitgetRequest<BitgetResponse<any[]>>({
+    method: "GET",
+    path: "/api/v2/mix/account/accounts",
+    query: { productType },
+  });
+
+  return resp;
+}
 
 export async function GET() {
   try {
-    // Futures Account Endpoint (v2)
-    const resp = await bitgetRequest<BitgetResponse<MixAccountData>>({
-      method: "GET",
-      path: "/api/v2/mix/account/account",
-      query: {
-        productType: "USDT-FUTURES",
-        // falls nötig:
-        // marginCoin: "USDT",
-      },
-    });
+    // Für “alle Futures Accounts” probieren wir die gängigen ProductTypes
+    const productTypes = ["USDT-FUTURES", "COIN-FUTURES", "USDC-FUTURES"];
 
-    if (resp.code !== "00000") {
-      throw new Error(`Bitget error ${resp.code}: ${resp.msg}`);
+    const results: Array<{
+      productType: string;
+      ok: boolean;
+      code?: string;
+      msg?: string;
+      equitySum?: number;
+      count?: number;
+      sampleKeys?: string[];
+    }> = [];
+
+    let totalEquity = 0;
+    let anySuccess = false;
+
+    for (const pt of productTypes) {
+      try {
+        const resp = await fetchAccounts(pt);
+
+        if (!resp || resp.code !== "00000") {
+          results.push({
+            productType: pt,
+            ok: false,
+            code: resp?.code,
+            msg: resp?.msg,
+          });
+          continue;
+        }
+
+        const rows = Array.isArray(resp.data) ? resp.data : [];
+        let sum = 0;
+        let count = 0;
+
+        for (const row of rows) {
+          const eq = readEquityFromAccountRow(row);
+          if (eq == null) continue;
+          sum += eq;
+          count += 1;
+        }
+
+        // Wenn Bitget für diesen ProductType “leer” liefert, ist das ok – dann addieren wir 0
+        totalEquity += sum;
+        anySuccess = true;
+
+        results.push({
+          productType: pt,
+          ok: true,
+          code: resp.code,
+          msg: resp.msg,
+          equitySum: sum,
+          count,
+          sampleKeys: rows[0] ? Object.keys(rows[0]) : [],
+        });
+      } catch (e: any) {
+        results.push({
+          productType: pt,
+          ok: false,
+          msg: e?.message ?? String(e),
+        });
+      }
     }
 
-    if (!resp || resp.code !== "00000") {
+    if (!anySuccess) {
       return Response.json(
-        { ok: false, error: "Bitget error", resp },
+        { ok: false, error: "Bitget accounts query failed", results },
         { status: 502 },
       );
     }
 
     const ts = Date.now();
-    const d = resp.data ?? {};
-
-    // defensiv: wir versuchen mehrere mögliche Equity-Felder
-    const equity =
-      toNum(d.usdtEquity) ?? toNum(d.accountEquity) ?? toNum(d.equity) ?? null;
-
-    if (equity == null) {
-      return Response.json(
-        {
-          ok: false,
-          error: "Could not read equity from Bitget response",
-          resp,
-        },
-        { status: 502 },
-      );
-    }
 
     const events: RiskEvent[] = [
       {
         id: `eq-${ts}`,
         type: "EQUITY_SNAPSHOT",
         ts,
-        equity,
-        meta: { source: "bitget", rawKeys: Object.keys(d) },
+        equity: totalEquity,
+        meta: { source: "bitget", results },
       },
     ];
 
     return Response.json(
-      { ok: true, events, debug: { equity } },
+      { ok: true, events, debug: { totalEquity, results } },
       { status: 200 },
     );
   } catch (err: any) {
