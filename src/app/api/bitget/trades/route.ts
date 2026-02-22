@@ -62,16 +62,15 @@ export async function GET(req: Request) {
       : 200;
 
     const now = Date.now();
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
     const resp = await bitgetRequest<BitgetResponse<{ list?: TradeRow[] }>>({
       method: "GET",
       path: "/api/v2/mix/order/fill-history",
       query: {
         productType: "USDT-FUTURES",
-        startTime: sevenDaysAgo,
+        startTime: thirtyDaysAgo,
         endTime: now,
-        limit: max,
       },
     });
 
