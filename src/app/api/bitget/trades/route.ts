@@ -80,7 +80,13 @@ export async function GET() {
 
     const events: RiskEvent[] = allRows
       .map((p, i) => {
-        const ts = toTs(p.closeTime);
+        const ts = toTs(
+          p.closeTime ??
+            (p as any).uTime ??
+            (p as any).cTime ??
+            (p as any).updateTime ??
+            (p as any).ctime,
+        );
         if (!ts || !p.symbol) return null;
 
         return {
