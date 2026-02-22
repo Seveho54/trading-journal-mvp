@@ -6,26 +6,17 @@ import type { BitgetResponse } from "@/lib/bitget/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// defensiv typisiert, Bitget kann je nach Account Felder anders nennen
-type TradeRow = {
+type PositionHistoryRow = {
   symbol?: string;
-  side?: string; // buy/sell
-  positionSide?: string; // long/short
-  holdSide?: string; // long/short
-  tradeSide?: string;
-  price?: string | number;
-  fillPrice?: string | number;
-  size?: string | number;
-  qty?: string | number;
-  amount?: string | number;
-  fee?: string | number;
-  commission?: string | number;
-  realizedPnl?: string | number;
+  holdSide?: string;
+  openPrice?: string | number;
+  closePrice?: string | number;
+  openTime?: string | number;
+  closeTime?: string | number;
+  total?: string | number;
   pnl?: string | number;
-  profit?: string | number;
-  cTime?: string | number; // ms
-  uTime?: string | number; // ms
-  ts?: string | number;
+  realizedPnl?: string | number;
+  fee?: string | number;
   [k: string]: any;
 };
 
@@ -37,87 +28,87 @@ function toNum(x: any): number {
 function toTs(x: any): number {
   const n = Number(x);
   if (Number.isFinite(n) && n > 0) return n;
-  const d = new Date(x);
-  const t = d.getTime();
-  return Number.isFinite(t) ? t : 0;
+  return 0;
 }
 
-function toSide(row: TradeRow): "LONG" | "SHORT" {
-  const s = String(
-    row.positionSide ?? row.holdSide ?? row.tradeSide ?? row.side ?? "",
-  ).toUpperCase();
-
-  if (s.includes("SHORT")) return "SHORT";
-  // buy/sell fallback (nicht perfekt, aber ok als fallback):
-  if (s === "SELL") return "SHORT";
+function toSide(s: any): "LONG" | "SHORT" {
+  const str = String(s ?? "").toUpperCase();
+  if (str.includes("SHORT")) return "SHORT";
   return "LONG";
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const url = new URL(req.url);
-    const limit = Number(url.searchParams.get("limit") ?? "200");
-    const max = Number.isFinite(limit)
-      ? Math.min(Math.max(limit, 1), 500)
-      : 200;
-
     const now = Date.now();
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const MS = 24 * 60 * 60 * 1000;
+    const DAYS_PER_BLOCK = 7;
+    const lookbackDays = 30;
 
-    const resp = await bitgetRequest<BitgetResponse<{ list?: TradeRow[] }>>({
-      method: "GET",
-      path: "/api/v2/mix/order/fill-history",
-      query: {
-        productType: "USDT-FUTURES",
-        startTime: thirtyDaysAgo,
-        endTime: now,
-      },
-    });
+    const start = now - lookbackDays * MS;
 
-    if (resp.code !== "00000") {
-      return Response.json(
-        { ok: false, error: `Bitget ${resp.code}: ${resp.msg}`, resp },
-        { status: 502 },
-      );
+    const blocks: { start: number; end: number }[] = [];
+    let cursor = start;
+
+    while (cursor < now) {
+      const end = Math.min(cursor + DAYS_PER_BLOCK * MS, now);
+      blocks.push({ start: cursor, end });
+      cursor = end;
     }
 
-    const list = resp.data?.list ?? [];
+    let allRows: PositionHistoryRow[] = [];
 
-    const events: RiskEvent[] = list
-      .map((t, i) => {
-        const ts = toTs(t.cTime ?? t.uTime ?? t.ts);
-        const symbol = String(t.symbol ?? "");
-        if (!ts || !symbol) return null;
+    for (const b of blocks) {
+      const resp = await bitgetRequest<
+        BitgetResponse<{ list?: PositionHistoryRow[] }>
+      >({
+        method: "GET",
+        path: "/api/v2/mix/position/history-position",
+        query: {
+          productType: "USDT-FUTURES",
+          startTime: b.start,
+          endTime: b.end,
+        },
+      });
 
-        const realized =
-          toNum(t.realizedPnl) || toNum(t.pnl) || toNum(t.profit);
+      if (resp.code !== "00000") {
+        throw new Error(`Bitget ${resp.code}: ${resp.msg}`);
+      }
 
-        const qty = toNum(t.qty) || toNum(t.size) || toNum(t.amount);
+      const list = resp.data?.list ?? [];
+      allRows = allRows.concat(list);
+    }
 
-        const price = toNum(t.fillPrice ?? t.price);
+    const events: RiskEvent[] = allRows
+      .map((p, i) => {
+        const ts = toTs(p.closeTime);
+        if (!ts || !p.symbol) return null;
 
         return {
-          id: `fill-${symbol}-${ts}-${i}`,
+          id: `pos-close-${p.symbol}-${ts}-${i}`,
           type: "TRADE_CLOSE",
           ts,
-          symbol,
-          side: toSide(t),
-          qty,
-          price,
-          realizedPnl: realized,
-          fee: toNum(t.fee ?? t.commission),
-          meta: { source: "bitget", raw: t },
+          symbol: p.symbol,
+          side: toSide(p.holdSide),
+          qty: toNum(p.total),
+          price: toNum(p.closePrice),
+          realizedPnl: toNum(p.realizedPnl) || toNum(p.pnl),
+          fee: toNum(p.fee),
+          meta: { source: "bitget" },
         } as RiskEvent;
       })
       .filter(Boolean) as RiskEvent[];
 
-    // sort chronologisch
     events.sort((a, b) => a.ts - b.ts);
 
-    return Response.json(
-      { ok: true, events, debug: { count: events.length } },
-      { status: 200 },
-    );
+    return Response.json({
+      ok: true,
+      debug: {
+        blocks: blocks.length,
+        rawCount: allRows.length,
+        mappedCount: events.length,
+      },
+      events,
+    });
   } catch (err: any) {
     return Response.json(
       { ok: false, error: err?.message ?? "Unknown error" },
