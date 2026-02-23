@@ -61,12 +61,14 @@ export function computeSurvivalScore(args: {
 ----------------------------- */
 
 function computeDrawdownScore(equity: EquityAnalysis): number {
-  const dd = equity.currentDrawdownPct ?? 0;
-  const maxDD = equity.maxDrawdownPct ?? 0;
+  const dd = Math.max(0, Number(equity.currentDrawdownPct ?? 0));
+  const maxDD = Math.max(0, Number(equity.maxDrawdownPct ?? 0));
 
-  // Penalize both current and historical drawdown
-  const penalty = dd * 60 + maxDD * 40; // scaled influence
-  const score = 100 - penalty * 100;
+  // ✅ falls current leer ist, nimm maxDD (und umgekehrt)
+  const effective = Math.max(dd, maxDD);
+
+  // Score: 0% DD => 100, 50% DD => ~0 (linear, easy & predictable)
+  const score = 100 - effective * 200;
 
   return clamp(Math.round(score), 0, 100);
 }

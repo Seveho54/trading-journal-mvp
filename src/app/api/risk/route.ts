@@ -18,7 +18,10 @@ export async function POST(req: Request) {
 
     const os = computeRiskOS({ events, nowTs: Date.now() });
 
-    return Response.json({ ok: true, os }, { status: 200 });
+    return Response.json(
+      { ok: true, os, debug: { equity: os.equity } },
+      { status: 200 },
+    );
   } catch (err: any) {
     return Response.json(
       { ok: false, error: err?.message ?? "Unknown error" },

@@ -44,9 +44,27 @@ export default function ControlCenterPage() {
   const router = useRouter();
   const { data } = useTradeSession();
 
-  const events = useMemo(() => {
+  const uploadEvents = useMemo(() => {
     return mapTradesToRiskEvents(data?.trades ?? []);
   }, [data]);
+
+  const [tradeEvents, setTradeEvents] = useState<RiskEvent[]>([]);
+
+  const events = useMemo(() => {
+    const merged = [...tradeEvents, ...uploadEvents];
+
+    // ✅ Dedupe: gleicher Trade (symbol+ts+realizedPnl+fee) nur einmal
+    const seen = new Set<string>();
+    const unique = merged.filter((e) => {
+      const k = `${e.type}|${e.symbol}|${e.ts}|${e.realizedPnl ?? 0}|${e.fee ?? 0}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    unique.sort((a, b) => a.ts - b.ts);
+    return unique;
+  }, [tradeEvents, uploadEvents]);
 
   const [liveEquity, setLiveEquity] = useState<number | null>(null);
   const [liveTs, setLiveTs] = useState<number | null>(null);
@@ -81,7 +99,40 @@ export default function ControlCenterPage() {
     };
   }, []);
 
-  const hasData = events.length > 0;
+  useEffect(() => {
+    let alive = true;
+
+    async function loadTrades() {
+      try {
+        const res = await fetch("/api/bitget/trades?lookbackDays=30", {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => null);
+
+        if (!alive) return;
+
+        if (res.ok && json?.ok && Array.isArray(json?.events)) {
+          setTradeEvents(json.events);
+        } else {
+          console.error("Trades fetch failed", json);
+          setTradeEvents([]);
+        }
+      } catch (e) {
+        if (!alive) return;
+        console.error("Trades fetch crashed", e);
+        setTradeEvents([]);
+      }
+    }
+
+    loadTrades();
+    const id = setInterval(loadTrades, 60_000); // alle 60s reicht
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const hasData = events.length > 0 || liveEquity != null;
 
   const [os, setOs] = useState<any>(null);
 
@@ -97,6 +148,7 @@ export default function ControlCenterPage() {
         // 1) Hole Snapshot vom Backend
         const snapRes = await fetch("/api/bitget/snapshot", {
           cache: "no-store",
+          signal: ac.signal,
         });
 
         const snapJson = await snapRes.json().catch(() => null);
@@ -121,12 +173,13 @@ export default function ControlCenterPage() {
           const posJson = await posRes.json().catch(() => null);
 
           if (posRes.ok && posJson?.ok && Array.isArray(posJson?.positions)) {
-            const tsNow = snapshotEvents[0]?.ts ?? Date.now(); // benutze Equity-ts wenn vorhanden
+            const tsNow = snapshotEvents[0]?.ts ?? liveTs ?? Date.now();
             posEvents = mapOpenPositionsToRiskEvents(posJson.positions, tsNow);
           } else {
             console.error("Open positions failed", posJson);
           }
-        } catch (e) {
+        } catch (e: any) {
+          if (e?.name === "AbortError") return; // ✅ ignore
           console.error("Open positions fetch crashed", e);
         }
 
@@ -193,7 +246,10 @@ export default function ControlCenterPage() {
         // Abort ignorieren
         if (err?.name === "AbortError") return;
         console.error("runRisk crashed:", err);
-        setOs(null);
+        const next = json?.os ?? json;
+        setOs((prev: any) =>
+          JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
+        );
       }
     }
 
@@ -202,7 +258,7 @@ export default function ControlCenterPage() {
     return () => {
       ac.abort();
     };
-  }, [events, liveEquity, liveTs]);
+  }, [events]);
 
   const topAlerts = useMemo(() => {
     if (!os) return [];
@@ -255,6 +311,11 @@ export default function ControlCenterPage() {
             <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
               Educational analytics only. Deterministic Risk OS (v1).
             </div>
+          </div>
+
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            Trades loaded:{" "}
+            <b style={{ color: "var(--text)" }}>{events.length}</b>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
