@@ -61,14 +61,23 @@ export function computeSurvivalScore(args: {
 ----------------------------- */
 
 function computeDrawdownScore(equity: EquityAnalysis): number {
-  const dd = Math.max(0, Number(equity.currentDrawdownPct ?? 0));
-  const maxDD = Math.max(0, Number(equity.maxDrawdownPct ?? 0));
+  const dd = Math.max(0, Number(equity.currentDrawdownPct ?? 0)); // 0..1
+  const maxDD = Math.max(0, Number(equity.maxDrawdownPct ?? 0)); // 0..1
 
-  // ✅ falls current leer ist, nimm maxDD (und umgekehrt)
-  const effective = Math.max(dd, maxDD);
+  // ✅ Pro-Logik:
+  // - current DD = "jetzt gefährlich" (70% Gewicht)
+  // - maxDD = "historische Fragilität" (30% Gewicht)
+  // - maxDD wirkt nur teilweise, damit ein alter DD dich nicht für immer zerstört
+  const ddWeighted = dd * 0.7 + maxDD * 0.3;
 
-  // Score: 0% DD => 100, 50% DD => ~0 (linear, easy & predictable)
-  const score = 100 - effective * 200;
+  // Score mapping (smooth-ish, aber deterministisch):
+  // 0% => 100
+  // 10% => 80
+  // 20% => 60
+  // 30% => 40
+  // 40% => 20
+  // 50% => 0
+  const score = 100 - ddWeighted * 200;
 
   return clamp(Math.round(score), 0, 100);
 }
@@ -92,27 +101,63 @@ function computeExposureScore(exposure: ExposureAnalysis): number {
 }
 
 function computeDailyLossScore(daily: DailyLossAnalysis): number {
-  if (!daily.dayStartEquity || !daily.dailyPnlPct) return 100;
+  const start = daily.dayStartEquity;
+  const pnlPct = daily.dailyPnlPct;
 
-  if (daily.dailyPnlPct >= 0) return 100;
+  // Wenn wir keinen Start oder keine PnL% haben: neutral (nicht bestrafen)
+  if (
+    start == null ||
+    !Number.isFinite(start) ||
+    pnlPct == null ||
+    !Number.isFinite(pnlPct)
+  ) {
+    return 100;
+  }
 
-  const lossPct = Math.abs(daily.dailyPnlPct);
-  const limit = daily.limit.dailyLossLimitPct;
+  // Gewinne => 100
+  if (pnlPct >= 0) return 100;
 
-  const ratio = limit > 0 ? lossPct / limit : 0;
+  const lossPct = Math.abs(pnlPct); // z.B. 0.001 = 0.1%
+  const limit = daily.limit?.dailyLossLimitPct ?? 0.03; // default 3%
 
-  const penalty =
-    ratio >= 1
-      ? 80
-      : ratio >= 0.7
-        ? 50
-        : ratio >= 0.5
-          ? 30
-          : ratio >= 0.3
-            ? 15
-            : 5;
+  // Guard: wenn limit komisch ist
+  if (!Number.isFinite(limit) || limit <= 0) return 100;
 
-  return clamp(100 - penalty, 0, 100);
+  // Ratio: 0.0 .. 1.0 .. >1.0
+  const ratio = lossPct / limit;
+
+  // ✅ Noise band: bis 10% vom Daily-Limit kein Penalty
+  // Beispiel bei 3% Limit: 0.3% Verlust => noch 0 Penalty
+  if (ratio <= 0.1) return 100;
+
+  // ✅ Piecewise: je näher am Limit, desto härter
+  // 0.10..0.50 => mild
+  // 0.50..0.80 => medium
+  // 0.80..1.00 => heavy
+  // >1.00      => almost dead
+  let penalty = 0;
+
+  if (ratio <= 0.5) {
+    // 0..20 penalty
+    // linear zwischen 0.10 -> 0, 0.50 -> 20
+    const t = (ratio - 0.1) / (0.5 - 0.1);
+    penalty = 20 * t;
+  } else if (ratio <= 0.8) {
+    // 20..50 penalty
+    const t = (ratio - 0.5) / (0.8 - 0.5);
+    penalty = 20 + 30 * t;
+  } else if (ratio <= 1.0) {
+    // 50..80 penalty
+    const t = (ratio - 0.8) / (1.0 - 0.8);
+    penalty = 50 + 30 * t;
+  } else {
+    // über Limit: 80..100 penalty (cap)
+    const t = Math.min(1, (ratio - 1.0) / 0.5); // bei 1.5x Limit => 100
+    penalty = 80 + 20 * t;
+  }
+
+  const score = 100 - penalty;
+  return clamp(Math.round(score), 0, 100);
 }
 
 function computeBehaviorScore(deviations: Deviation[]): number {

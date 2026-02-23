@@ -8,6 +8,16 @@ import { mapTradesToRiskEvents } from "@/core/risk/mappers/mapTradesToRiskEvents
 import type { RiskEvent } from "@/core/risk/types";
 import { mapOpenPositionsToRiskEvents } from "@/core/risk/mappers/mapOpenPositionsToRiskEvents";
 
+const DAYSTART_KEY = "tv:dayStartEquity:v1";
+const DAYSTART_DATE_KEY = "tv:dayStartEquityDate:v1";
+
+function yyyyMmDdUtc(ts: number) {
+  const d = new Date(ts);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    d.getUTCDate(),
+  ).padStart(2, "0")}`;
+}
+
 function cardInner(): React.CSSProperties {
   return {
     border: "1px solid var(--border)",
@@ -84,6 +94,17 @@ export default function ControlCenterPage() {
 
         setLiveEquity(Number.isFinite(eq) ? eq : null);
         setLiveTs(Number.isFinite(ts) ? ts : Date.now());
+        // ✅ DayStartEquity setzen (1x pro UTC-Tag)
+        if (Number.isFinite(eq) && eq > 0) {
+          const today = yyyyMmDdUtc(ts);
+          const savedDate = localStorage.getItem(DAYSTART_DATE_KEY);
+          const savedEq = localStorage.getItem(DAYSTART_KEY);
+
+          if (savedDate !== today || !savedEq) {
+            localStorage.setItem(DAYSTART_DATE_KEY, today);
+            localStorage.setItem(DAYSTART_KEY, String(eq));
+          }
+        }
       } catch {
         if (!alive) return;
         setLiveEquity(null);
@@ -155,6 +176,35 @@ export default function ControlCenterPage() {
 
         let snapshotEvents: RiskEvent[] = [];
 
+        // ✅ DayStart Equity Event (für DailyLossEngine)
+        const dayStartEqRaw =
+          typeof window !== "undefined"
+            ? localStorage.getItem(DAYSTART_KEY)
+            : null;
+
+        const dayStartEq = dayStartEqRaw ? Number(dayStartEqRaw) : null;
+
+        const dayStartEvent: RiskEvent[] =
+          dayStartEq != null && Number.isFinite(dayStartEq) && dayStartEq > 0
+            ? [
+                {
+                  id: `eq-daystart-${yyyyMmDdUtc(Date.now())}`,
+                  type: "EQUITY_SNAPSHOT",
+                  ts: Date.UTC(
+                    new Date().getUTCFullYear(),
+                    new Date().getUTCMonth(),
+                    new Date().getUTCDate(),
+                    0,
+                    0,
+                    0,
+                    0,
+                  ),
+                  equity: dayStartEq,
+                  meta: { source: "local-daystart" },
+                },
+              ]
+            : [];
+
         if (snapRes.ok && snapJson?.ok && Array.isArray(snapJson.events)) {
           snapshotEvents = snapJson.events;
         } else {
@@ -185,6 +235,7 @@ export default function ControlCenterPage() {
 
         // 2) Combine: Equity zuerst, dann Trades
         const combinedEvents = [
+          ...dayStartEvent,
           ...snapshotEvents,
           ...posEvents,
           ...events,
@@ -309,9 +360,16 @@ export default function ControlCenterPage() {
             </div>
           </div>
 
+          <div className="p-muted" style={{ marginTop: 4, fontSize: 12 }}>
+            Deviations:{" "}
+            <b style={{ color: "var(--text)" }}>
+              {os?.deviations?.deviations?.length ?? 0}
+            </b>
+          </div>
+
           <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-            Trades loaded:{" "}
-            <b style={{ color: "var(--text)" }}>{events.length}</b>
+            wrapperOk:{" "}
+            <b style={{ color: "var(--text)" }}>{String((os as any)?.ok)}</b>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -478,34 +536,6 @@ export default function ControlCenterPage() {
               <div style={{ fontWeight: 1000 }}>Live Risk Summary</div>
               <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                 What matters right now.
-              </div>
-
-              <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
-                <div>
-                  anchorEquity:{" "}
-                  <b style={{ color: "var(--text)" }}>
-                    {os.equity?.anchorEquity ?? "—"}
-                  </b>
-                </div>
-                <div>
-                  tradesUsed:{" "}
-                  <b style={{ color: "var(--text)" }}>
-                    {os.equity?.tradesUsed ?? "—"}
-                  </b>
-                </div>
-                <div>
-                  netRealizedUsed:{" "}
-                  <b style={{ color: "var(--text)" }}>
-                    {os.equity?.netRealizedUsed ?? "—"}
-                  </b>
-                </div>
-              </div>
-
-              <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-                peakEquity:{" "}
-                <b style={{ color: "var(--text)" }}>
-                  {os.equity?.peakEquity ?? "—"}
-                </b>
               </div>
 
               <div

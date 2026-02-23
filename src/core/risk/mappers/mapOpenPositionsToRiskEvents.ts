@@ -19,15 +19,36 @@ export function mapOpenPositionsToRiskEvents(
       const symbol = String(p?.symbol ?? "");
       if (!symbol) return null;
 
-      const qty = toNum(p?.total);
-      const mark = toNum(p?.markPrice);
-      const lev = toNum(p?.leverage);
+      const qty = Math.abs(
+        toNum(
+          p?.total ??
+            p?.totalSize ??
+            p?.size ??
+            p?.qty ??
+            p?.amount ??
+            p?.available ??
+            p?.pos ??
+            0,
+        ),
+      );
+
+      const mark = toNum(
+        p?.markPrice ??
+          p?.markPx ??
+          p?.mark ??
+          p?.last ??
+          p?.lastPrice ??
+          p?.price ??
+          0,
+      );
+
+      const lev = toNum(p?.leverage ?? p?.marginLeverage ?? 0);
 
       // notional = qty * mark (für Exposure Engine)
       const notional = Math.abs(qty * mark);
 
       // wenn qty 0 → ignorieren
-      if (!qty || !mark) return null;
+      if (!(qty > 0) || !(mark > 0)) return null;
 
       return {
         id: `pos-${symbol}-${tsNow}-${i}`,

@@ -3,7 +3,7 @@
 import type { BehaviorBaseline } from "./baselineEngine";
 
 import { pickActiveBaseline } from "./baselineEngine";
-import type { RiskEvent } from "../schema";
+import type { RiskEvent } from "../types";
 
 /**
  * Deviation Detection Engine (v1)
@@ -81,6 +81,8 @@ export function detectDeviations(args: {
     : samples.length
       ? samples[samples.length - 1].ts
       : Date.now();
+
+  console.log("sample used", samples.length);
 
   const active = pickActiveBaseline(args.baselines);
   // "fast baseline" = last 20 trades, reacts quickly
@@ -315,45 +317,38 @@ type TradeSample = {
 
 function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
   const TYPES = new Set([
+    "TRADE_CLOSE",
+    "POSITION_CLOSE",
     "POSITION_CLOSED",
     "TRADE_CLOSED",
-    "POSITION",
-    "TRADE",
   ]);
   const out: TradeSample[] = [];
 
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
 
-    // @ts-ignore
     const type = String((e as any).type ?? "");
     if (!TYPES.has(type)) continue;
 
-    // @ts-ignore
     const ts = Number((e as any).ts ?? (e as any).timestamp ?? NaN);
     if (!Number.isFinite(ts)) continue;
 
-    // @ts-ignore
     const data = (e as any).data ?? e;
 
-    const net =
-      safeNum(data.netProfit) ??
-      safeNum(data.net) ??
-      safeNum(data.realizedPnl) ??
-      safeNum(data.pnl) ??
-      null;
-    if (net == null) continue;
+    const realized = safeNum((data as any).realizedPnl) ?? 0;
+    const fee = safeNum((data as any).fee) ?? 0;
+    const net = realized - fee;
 
     const notional =
-      safeNum(data.notional) ??
-      safeNum(data.entryNotional) ??
-      safeNum(data.exitNotional) ??
-      null;
+      safeNum((data as any)?.meta?.notional) ??
+      (safeNum((data as any).qty) != null &&
+      safeNum((data as any).price) != null
+        ? Math.abs(Number((data as any).qty) * Number((data as any).price))
+        : null);
 
     const effLev =
-      safeNum(data.effectiveLeverage) ??
-      safeNum(data.effLev) ??
-      safeNum(data.leverage) ??
+      safeNum((data as any)?.meta?.effectiveLeverage) ??
+      safeNum((data as any)?.meta?.leverage) ??
       null;
 
     out.push({

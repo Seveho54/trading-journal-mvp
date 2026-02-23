@@ -202,21 +202,20 @@ function extractEquitySeries(events: RiskEvent[]): EquityPoint[] {
 
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
-    // @ts-ignore
     const type = String((e as any).type ?? "");
-    // @ts-ignore
     const ts = Number((e as any).ts);
     if (!TYPES.has(type) || !Number.isFinite(ts)) continue;
 
-    // @ts-ignore
     const data = (e as any).data ?? {};
 
     const equity =
+      safeNum((e as any).equity) ??
       safeNum(data.equity) ??
       safeNum(data.walletEquity) ??
       safeNum(data.totalEquity) ??
       safeNum(data?.account?.equity) ??
       safeNum(data?.account?.walletEquity) ??
+      safeNum((e as any)?.meta?.equitySum) ??
       null;
 
     if (equity == null) continue;
@@ -244,12 +243,14 @@ function pickEquityAtOrNear(
 ): number | null {
   if (!series.length) return null;
 
-  // Find first point >= targetTs
+  for (let i = series.length - 1; i >= 0; i--) {
+    if (series[i].ts <= targetTs) return series[i].equity;
+  }
+
   for (const p of series) {
     if (p.ts >= targetTs) return p.equity;
   }
 
-  // If none >=, use last available (shouldn’t happen in normal "today" flow)
   return series[series.length - 1]?.equity ?? null;
 }
 
