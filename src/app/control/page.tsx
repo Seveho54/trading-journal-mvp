@@ -137,7 +137,7 @@ export default function ControlCenterPage() {
   const [os, setOs] = useState<any>(null);
 
   useEffect(() => {
-    if (!events.length) return;
+    if (!events.length && liveTs == null) return;
 
     const ac = new AbortController();
 
@@ -243,13 +243,9 @@ export default function ControlCenterPage() {
         // - direkt: { equity, exposure, ... }
         setOs(json?.os ?? json);
       } catch (err: any) {
-        // Abort ignorieren
         if (err?.name === "AbortError") return;
         console.error("runRisk crashed:", err);
-        const next = json?.os ?? json;
-        setOs((prev: any) =>
-          JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
-        );
+        setOs(null);
       }
     }
 
@@ -258,7 +254,7 @@ export default function ControlCenterPage() {
     return () => {
       ac.abort();
     };
-  }, [events]);
+  }, [events, liveTs]);
 
   const topAlerts = useMemo(() => {
     if (!os) return [];

@@ -1,11 +1,7 @@
 // src/core/risk/engines/exposureEngine.ts
 
-import { RiskEvent } from "../schema";
+import type { RiskEvent } from "../types";
 
-/**
- * Minimal shape we need for exposure calculations.
- * We intentionally accept "unknown" fields and normalize inside.
- */
 export type LivePosition = {
   symbol: string;
   side: "LONG" | "SHORT";
@@ -65,10 +61,7 @@ export function analyzeExposure(args: {
 
   // 1) Find the latest position snapshot-like event.
   // We keep this generic: you may have POSITION_SNAPSHOT / OPEN_POSITIONS / ACCOUNT_STATE etc.
-  const lastPosEvent = findLatestPositionsEvent(events);
-
-  const ts = lastPosEvent?.ts ?? null;
-  const positions = lastPosEvent ? extractPositions(lastPosEvent) : [];
+  const { ts, positions } = extractLatestPositionsFromEvents(events);
 
   // 2) Aggregate
   const totals = computeTotals(positions);
@@ -117,93 +110,37 @@ export function analyzeExposure(args: {
    Internals (robust + explainable)
 ----------------------------- */
 
-function findLatestPositionsEvent(events: RiskEvent[]) {
-  // Customize these strings to your schema when you’re ready.
-  const TYPES = new Set([
-    "POSITION_SNAPSHOT",
-    "POSITIONS_SNAPSHOT",
-    "OPEN_POSITIONS",
-    "ACCOUNT_STATE",
-    "RISK_STATE",
-  ]);
-
-  let best: RiskEvent | null = null;
+function extractLatestPositionsFromEvents(events: RiskEvent[]): {
+  ts: number | null;
+  positions: LivePosition[];
+} {
+  // wir nehmen die letzten POSITION_UPDATE Events pro Symbol
+  const latestBySymbol = new Map<string, RiskEvent>();
 
   for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    const t = String((e as any).type ?? "");
-    const ts = Number((e as any).ts);
+    if (e?.type !== "POSITION_UPDATE") continue;
+    if (!e.symbol) continue;
+    if (!Number.isFinite(e.ts)) continue;
 
-    if (!TYPES.has(t)) continue;
-    if (!Number.isFinite(ts)) continue;
-
-    if (!best || ts > Number((best as any).ts)) best = e;
+    const prev = latestBySymbol.get(e.symbol);
+    if (!prev || e.ts > prev.ts) latestBySymbol.set(e.symbol, e);
   }
 
-  return best;
-}
-
-function extractPositions(e: RiskEvent): LivePosition[] {
-  // We accept different shapes:
-  // e.data.positions
-  // e.data.openPositions
-  // e.data.state.positions
-  // etc.
-
-  const data = (e as any).data ?? {};
-
-  const rawList =
-    data.positions ??
-    data.openPositions ??
-    data?.state?.positions ??
-    data?.account?.positions ??
-    [];
-
-  if (!Array.isArray(rawList)) return [];
-
   const out: LivePosition[] = [];
+  let bestTs: number | null = null;
 
-  for (const p of rawList) {
-    const sym = normalizeSymbol(
-      p?.symbol ?? p?.instId ?? p?.instrument ?? p?.s,
-    );
-    if (!sym) continue;
-
-    const side = normalizeSide(
-      p?.side ??
-        p?.positionSide ??
-        p?.direction ??
-        p?.posSide ??
-        p?.holdSide ??
-        p?.tradeSide,
-      p,
-    );
-
-    const qty =
-      safeNum(p?.qty) ??
-      safeNum(p?.size) ??
-      safeNum(p?.positionAmt) ??
-      safeNum(p?.contracts) ??
-      safeNum(p?.available) ??
-      0;
-
-    const markPrice =
-      safeNum(p?.markPrice) ??
-      safeNum(p?.markPx) ??
-      safeNum(p?.price) ??
-      safeNum(p?.lastPrice) ??
-      safeNum(p?.last) ??
-      0;
+  for (const e of latestBySymbol.values()) {
+    const sym = normalizeSymbol(e.symbol);
+    const side = (e.side ?? "UNKNOWN") as any;
+    const qty = safeNum(e.qty) ?? 0;
+    const markPrice = safeNum(e.price) ?? 0;
 
     const notional =
-      safeNum(p?.notional) ??
-      safeNum(p?.positionValue) ??
-      safeNum(p?.usdtValue) ??
-      safeNum(p?.notionalValue) ??
-      null;
+      safeNum((e as any)?.meta?.notional) ??
+      (qty > 0 && markPrice > 0 ? qty * markPrice : null);
 
-    // We only include positions that actually exist
-    if (!(qty > 0) || !(markPrice > 0) || side === "UNKNOWN") continue;
+    if (!(qty > 0) || !(markPrice > 0)) continue;
+    if (side !== "LONG" && side !== "SHORT") continue;
 
     out.push({
       symbol: sym,
@@ -212,9 +149,11 @@ function extractPositions(e: RiskEvent): LivePosition[] {
       markPrice,
       notional: notional ?? undefined,
     });
+
+    if (bestTs == null || e.ts > bestTs) bestTs = e.ts;
   }
 
-  return out;
+  return { ts: bestTs, positions: out };
 }
 
 function computeTotals(positions: LivePosition[]) {
