@@ -10,31 +10,36 @@ import { analyzeExposure } from "./engines/exposureEngine";
 import { analyzeDailyLoss } from "./engines/dailyLossEngine";
 
 export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
-  const equity = analyzeEquity(args.events);
+  const nowTs = args.nowTs ?? Date.now();
+  const events = [...args.events].sort((a, b) => a.ts - b.ts);
+
+  const equity = analyzeEquity(events);
+
   const exposure = analyzeExposure({
-    events: args.events,
+    events,
     equity: equity.currentEquity,
   });
+
   const daily = analyzeDailyLoss({
-    events: args.events,
+    events,
     currentEquity: equity.currentEquity,
-    currentTs: args.nowTs,
+    currentTs: nowTs,
   });
 
   const baselines = buildBehaviorBaselines({
-    events: args.events,
-    nowTs: args.nowTs,
+    events,
+    nowTs,
   });
 
   const deviationPack = detectDeviations({
-    events: args.events,
+    events,
     baselines,
-    nowTs: args.nowTs,
+    nowTs,
   });
 
   const actionPack = buildActions({
     deviations: deviationPack.deviations,
-    nowTs: args.nowTs,
+    nowTs,
   });
 
   const survival = computeSurvivalScore({

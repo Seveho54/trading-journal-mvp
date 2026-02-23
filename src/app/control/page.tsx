@@ -6,6 +6,7 @@ import { useTradeSession } from "../providers/TradeSessionProvider";
 import { DEFAULT_CCY, fmtMoney, fmtPercent } from "@/lib/format";
 import { mapTradesToRiskEvents } from "@/core/risk/mappers/mapTradesToRiskEvents";
 import type { RiskEvent } from "@/core/risk/types";
+import { mapOpenPositionsToRiskEvents } from "@/core/risk/mappers/mapOpenPositionsToRiskEvents";
 
 function cardInner(): React.CSSProperties {
   return {
@@ -108,10 +109,33 @@ export default function ControlCenterPage() {
           console.error("Snapshot failed", snapJson);
         }
 
+        // 1.5) Open Positions Snapshot (Realtime Exposure)
+        let posEvents: RiskEvent[] = [];
+
+        try {
+          const posRes = await fetch("/api/bitget/open-positions", {
+            cache: "no-store",
+            signal: ac.signal,
+          });
+
+          const posJson = await posRes.json().catch(() => null);
+
+          if (posRes.ok && posJson?.ok && Array.isArray(posJson?.positions)) {
+            const tsNow = snapshotEvents[0]?.ts ?? Date.now(); // benutze Equity-ts wenn vorhanden
+            posEvents = mapOpenPositionsToRiskEvents(posJson.positions, tsNow);
+          } else {
+            console.error("Open positions failed", posJson);
+          }
+        } catch (e) {
+          console.error("Open positions fetch crashed", e);
+        }
+
         // 2) Combine: Equity zuerst, dann Trades
-        const combinedEvents = [...snapshotEvents, ...events].sort(
-          (a, b) => a.ts - b.ts,
-        );
+        const combinedEvents = [
+          ...snapshotEvents,
+          ...posEvents,
+          ...events,
+        ].sort((a, b) => a.ts - b.ts);
 
         const res = await fetch("/api/risk", {
           method: "POST",
@@ -397,6 +421,34 @@ export default function ControlCenterPage() {
               <div style={{ fontWeight: 1000 }}>Live Risk Summary</div>
               <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                 What matters right now.
+              </div>
+
+              <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
+                <div>
+                  anchorEquity:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os.equity?.anchorEquity ?? "—"}
+                  </b>
+                </div>
+                <div>
+                  tradesUsed:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os.equity?.tradesUsed ?? "—"}
+                  </b>
+                </div>
+                <div>
+                  netRealizedUsed:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os.equity?.netRealizedUsed ?? "—"}
+                  </b>
+                </div>
+              </div>
+
+              <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                peakEquity:{" "}
+                <b style={{ color: "var(--text)" }}>
+                  {os.equity?.peakEquity ?? "—"}
+                </b>
               </div>
 
               <div
