@@ -202,7 +202,7 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
 
     out.push({
       ts,
-      net,
+      net: Number(net),
       holdingMinutes,
       notional: notional != null ? Math.abs(notional) : null,
       effectiveLeverage:
