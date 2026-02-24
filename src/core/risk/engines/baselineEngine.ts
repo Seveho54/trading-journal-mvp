@@ -1,6 +1,6 @@
 // src/core/risk/engines/baselineEngine.ts
 
-import type { RiskEvent } from "../schema";
+import type { RiskEvent } from "../types";
 
 /**
  * Behavior Baselines Engine (v1)
@@ -142,10 +142,10 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
   // We accept various event shapes.
   // Ideally you emit: type="POSITION_CLOSED" or "TRADE_CLOSED" with netProfit, closeTs, holdingMin, notional, leverage
   const TYPES = new Set([
-    "POSITION_CLOSED",
+    "TRADE_CLOSE",
+    "POSITION_CLOSE",
     "TRADE_CLOSED",
-    "POSITION",
-    "TRADE", // fallback
+    "POSITION_CLOSED",
   ]);
 
   const out: TradeSample[] = [];
@@ -153,25 +153,25 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
   for (const e of events) {
     if (!e || typeof e !== "object") continue;
 
-    // @ts-ignore
     const type = String((e as any).type ?? "");
     if (!TYPES.has(type)) continue;
 
-    // @ts-ignore
     const ts = Number((e as any).ts ?? (e as any).timestamp ?? NaN);
     if (!Number.isFinite(ts)) continue;
 
-    // @ts-ignore
     const data = (e as any).data ?? e;
 
-    const net =
-      safeNum(data.netProfit) ??
-      safeNum(data.net) ??
-      safeNum(data.realizedPnl) ??
-      safeNum(data.pnl) ??
-      null;
+    const realized =
+      safeNum((e as any).realizedPnl) ??
+      safeNum((data as any).realizedPnl) ??
+      safeNum((data as any).pnl) ??
+      0;
 
-    if (net == null) continue;
+    const fee = safeNum((e as any).fee) ?? safeNum((data as any).fee) ?? 0;
+
+    const net = realized - fee;
+
+    if (!Number.isFinite(net)) continue;
 
     const holdingMinutes =
       safeNum(data.holdingMinutes) ??
@@ -180,16 +180,24 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
       null;
 
     // notional can be provided by position close event (abs qty*price)
-    const notional =
-      safeNum(data.notional) ??
-      safeNum(data.entryNotional) ??
-      safeNum(data.exitNotional) ??
+    const qty =
+      safeNum((e as any).qty) ??
+      safeNum((data as any).qty) ??
+      safeNum((data as any).size) ??
       null;
 
+    const price =
+      safeNum((e as any).price) ?? safeNum((data as any).price) ?? null;
+
+    const notional =
+      safeNum((e as any)?.meta?.notional) ??
+      (qty != null && price != null ? Math.abs(qty * price) : null);
+
     const effectiveLeverage =
-      safeNum(data.effectiveLeverage) ??
-      safeNum(data.effLev) ??
-      safeNum(data.leverage) ??
+      safeNum((e as any)?.meta?.effectiveLeverage) ??
+      safeNum((e as any)?.meta?.leverage) ??
+      safeNum((data as any)?.meta?.effectiveLeverage) ??
+      safeNum((data as any)?.meta?.leverage) ??
       null;
 
     out.push({

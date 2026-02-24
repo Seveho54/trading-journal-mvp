@@ -8,6 +8,7 @@ import { computeSurvivalScore } from "./engines/survivalScoreEngine";
 import { analyzeEquity } from "./engines/equityEngine";
 import { analyzeExposure } from "./engines/exposureEngine";
 import { analyzeDailyLoss } from "./engines/dailyLossEngine";
+import { computeRiskState } from "./engines/riskStateEngine";
 
 export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
   const nowTs = args.nowTs ?? Date.now();
@@ -49,6 +50,14 @@ export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
     deviations: deviationPack.deviations,
   });
 
+  const riskState = computeRiskState({
+    equity,
+    exposure,
+    daily,
+    deviations: deviationPack.deviations,
+    survival,
+  });
+
   return {
     equity,
     exposure,
@@ -57,5 +66,6 @@ export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
     deviations: deviationPack,
     actions: actionPack,
     survival,
+    riskState,
   };
 }

@@ -46,6 +46,31 @@ function badge(sev: string) {
   return { ...base, ...(map[sev] ?? { background: "rgba(255,255,255,0.06)" }) };
 }
 
+function stateBadge(state: string) {
+  const base: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "6px 12px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 1000,
+    border: "1px solid rgba(255,255,255,0.12)",
+    letterSpacing: 0.3,
+  };
+
+  const map: Record<string, React.CSSProperties> = {
+    SAFE: { background: "rgba(0,212,255,0.10)" },
+    WARNING: { background: "rgba(255,255,72,0.10)" },
+    DANGER: { background: "rgba(255,160,72,0.14)" },
+    CRITICAL: { background: "rgba(255,72,72,0.14)" },
+  };
+
+  return {
+    ...base,
+    ...(map[state] ?? { background: "rgba(255,255,255,0.06)" }),
+  };
+}
+
 function pnlClass(n: number) {
   return n > 0 ? "pnl-positive" : n < 0 ? "pnl-negative" : "pnl-zero";
 }
@@ -293,6 +318,10 @@ export default function ControlCenterPage() {
         // - { os: ... }
         // - direkt: { equity, exposure, ... }
         setOs(json?.os ?? json);
+
+        console.log("[control] os keys:", Object.keys(json?.os ?? json ?? {}));
+        console.log("[control] deviations:", (json?.os ?? json)?.deviations);
+        console.log("[control] baselines:", (json?.os ?? json)?.baselines);
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         console.error("runRisk crashed:", err);
@@ -421,7 +450,7 @@ export default function ControlCenterPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.2fr 0.8fr",
+              gridTemplateColumns: "1fr 1fr 1fr",
               gap: 12,
               alignItems: "start",
             }}
@@ -533,6 +562,67 @@ export default function ControlCenterPage() {
             </div>
 
             <div className="card" style={{ padding: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 1000 }}>Risk Status</div>
+                <span style={stateBadge(String(os?.riskState?.state ?? "—"))}>
+                  {String(os?.riskState?.state ?? "—")}
+                </span>
+              </div>
+
+              <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                One action. Based on deterministic rules.
+              </div>
+
+              <div style={{ marginTop: 12, ...cardInner() }}>
+                <div style={{ fontWeight: 1000 }}>
+                  {os?.riskState?.recommendedAction ?? "—"}
+                </div>
+
+                <div
+                  className="p-muted"
+                  style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5 }}
+                >
+                  {(os?.riskState?.reasons ?? [])
+                    .slice(0, 3)
+                    .map((r: string, i: number) => (
+                      <div key={i}>• {r}</div>
+                    ))}
+                </div>
+              </div>
+
+              <div className="p-muted" style={{ marginTop: 10, fontSize: 12 }}>
+                <div>
+                  Daily loss used:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.dailyLossUsedRatio != null
+                      ? `${Math.round(Number(os.riskState.flags.dailyLossUsedRatio) * 100)}%`
+                      : "—"}
+                  </b>
+                </div>
+                <div>
+                  DD:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.currentDrawdownPct != null
+                      ? `${Math.round(Number(os.riskState.flags.currentDrawdownPct) * 1000) / 10}%`
+                      : "—"}
+                  </b>
+                </div>
+                <div>
+                  Top deviation:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.topDeviationSeverity ?? "—"}
+                  </b>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: 16 }}>
               <div style={{ fontWeight: 1000 }}>Live Risk Summary</div>
               <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                 What matters right now.
@@ -603,6 +693,64 @@ export default function ControlCenterPage() {
                   <span className="p-muted">Daily PnL</span>
                   <b className={pnlClass(Number(os.daily?.dailyPnl ?? 0))}>
                     {fmtMoney(Number(os.daily?.dailyPnl ?? 0), DEFAULT_CCY)}
+                  </b>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontWeight: 1000 }}>Guardrails</div>
+            <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Your safety limits (deterministic). Pro feature later.
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <div style={cardInner()}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span className="p-muted">Daily loss limit</span>
+                  <b>3.0%</b>
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  Used today:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.dailyLossUsedRatio != null
+                      ? `${Math.round(Number(os.riskState.flags.dailyLossUsedRatio) * 100)}%`
+                      : "—"}
+                  </b>
+                </div>
+              </div>
+
+              <div style={cardInner()}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span className="p-muted">Max drawdown limit</span>
+                  <b>20.0%</b>
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  Current DD:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.currentDrawdownPct != null
+                      ? `${Math.round(Number(os.riskState.flags.currentDrawdownPct) * 1000) / 10}%`
+                      : "—"}
+                  </b>
+                </div>
+              </div>
+
+              <div style={cardInner()}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span className="p-muted">Cooldown after loss streak</span>
+                  <b>30 min</b>
+                </div>
+                <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  Current streak:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {os?.riskState?.flags?.lossStreak ?? "—"}
                   </b>
                 </div>
               </div>

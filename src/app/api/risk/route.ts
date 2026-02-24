@@ -9,6 +9,18 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
 
     const events = (body?.events ?? []) as RiskEvent[];
+
+    const counts = events.reduce(
+      (acc, e: any) => {
+        acc.total++;
+        acc.byType[e.type] = (acc.byType[e.type] ?? 0) + 1;
+        return acc;
+      },
+      { total: 0, byType: {} as Record<string, number> },
+    );
+
+    console.log("[/api/risk] events:", counts);
+
     if (!Array.isArray(events) || events.length === 0) {
       return Response.json(
         { ok: false, error: "No events provided" },
@@ -17,6 +29,13 @@ export async function POST(req: Request) {
     }
 
     const os = computeRiskOS({ events, nowTs: Date.now() });
+
+    console.log("[/api/risk] baselines:", os.baselines?.length ?? 0);
+    console.log(
+      "[/api/risk] deviations:",
+      os.deviations?.deviations?.length ?? 0,
+    );
+    console.log("[/api/risk] actions:", os.actions?.actions?.length ?? 0);
 
     return Response.json(
       { ok: true, os, debug: { equity: os.equity } },

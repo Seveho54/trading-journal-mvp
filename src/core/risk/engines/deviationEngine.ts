@@ -340,6 +340,7 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
     const net = realized - fee;
 
     const notional =
+      safeNum((e as any)?.meta?.notional) ??
       safeNum((data as any)?.meta?.notional) ??
       (safeNum((data as any).qty) != null &&
       safeNum((data as any).price) != null
