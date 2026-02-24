@@ -5,6 +5,8 @@ import type { ExposureAnalysis } from "./exposureEngine";
 import type { DailyLossAnalysis } from "./dailyLossEngine";
 import type { Deviation } from "./deviationEngine";
 import type { SurvivalScore } from "./survivalScoreEngine";
+import type { Guardrails } from "./guardrails";
+import { DEFAULT_GUARDRAILS } from "./guardrails";
 
 export type RiskState = "SAFE" | "WARNING" | "DANGER" | "CRITICAL";
 
@@ -12,12 +14,20 @@ export type RiskStateOutput = {
   state: RiskState;
   reasons: string[]; // max 3
   recommendedAction: string; // single clear action
+  hardStop: boolean;
+  blockReason: string | null;
   flags: {
     dailyLimitBreached: boolean;
     dailyLossUsedRatio: number | null; // 0..1
+    dailyLossLimitPct: number | null; // 0..1
+
     currentDrawdownPct: number | null; // 0..1
+    maxDrawdownPct: number | null; // 0..1
+
     survivalScore: number | null; // 0..100
     topDeviationSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+
+    lossStreak: number | null;
   };
 };
 
@@ -57,9 +67,21 @@ export function computeRiskState(args: {
   daily: DailyLossAnalysis;
   deviations: Deviation[];
   survival: SurvivalScore;
+  guardrails?: Partial<Guardrails>;
 }): RiskStateOutput {
+  const g = { ...DEFAULT_GUARDRAILS, ...(args.guardrails ?? {}) };
   const dd = Number.isFinite(Number(args.equity?.currentDrawdownPct))
     ? Number(args.equity.currentDrawdownPct)
+    : null;
+
+  const maxDD = Number.isFinite(Number(args.equity?.maxDrawdownPct))
+    ? Number(args.equity.maxDrawdownPct)
+    : null;
+
+  const dailyLimitPct = Number.isFinite(
+    Number(args.daily?.limit?.dailyLossLimitPct),
+  )
+    ? Number(args.daily.limit.dailyLossLimitPct)
     : null;
 
   const survivalScore = Number.isFinite(Number(args.survival?.score))
@@ -79,11 +101,56 @@ export function computeRiskState(args: {
 
   const topDev = pickTopSeverity(args.deviations);
 
+  const lossStreak = (() => {
+    const ls = args.deviations.find((d) => d.id === "LOSS_STREAK");
+    if (!ls) return 0;
+    const raw = (ls as any)?.evidence?.now?.lossStreak;
+    return Number.isFinite(Number(raw)) ? Number(raw) : 0;
+  })();
+
+  const HARD = {
+    ddStop: g.ddHardStopPct, // 25% DD => stop
+    lossStreakStop: g.lossStreakHardStop, // 4 losses in a row => stop
+    dailyLossStopRatio: 1.0, // 100% daily limit used => stop
+    survivalStop: g.survivalHardStop, // survival score too low
+  };
+
+  const hardStop = (() => {
+    if (dailyBreached) return true;
+    if (
+      dailyLossUsedRatio != null &&
+      dailyLossUsedRatio >= HARD.dailyLossStopRatio
+    )
+      return true;
+    if (dd != null && dd >= HARD.ddStop) return true;
+    if (lossStreak != null && lossStreak >= HARD.lossStreakStop) return true;
+    if (survivalScore != null && survivalScore < HARD.survivalStop) return true;
+    if (topDev === "CRITICAL") return true;
+    return false;
+  })();
+
+  const blockReason = (() => {
+    if (!hardStop) return null;
+    if (dailyBreached) return "Daily loss limit breached";
+    if (
+      dailyLossUsedRatio != null &&
+      dailyLossUsedRatio >= HARD.dailyLossStopRatio
+    )
+      return "Daily loss limit reached";
+    if (dd != null && dd >= HARD.ddStop) return "Drawdown hard-stop reached";
+    if (lossStreak != null && lossStreak >= HARD.lossStreakStop)
+      return "Loss streak hard-stop reached";
+    if (survivalScore != null && survivalScore < HARD.survivalStop)
+      return "Survival score hard-stop reached";
+    if (topDev === "CRITICAL") return "Critical behavior deviation";
+    return "Risk hard-stop";
+  })();
+
   const reasons: string[] = [];
 
   // ---------- CRITICAL ----------
   const isCritical =
-    dailyBreached ||
+    hardStop ||
     (dd != null && dd >= 0.25) ||
     (survivalScore != null && survivalScore < 40) ||
     topDev === "CRITICAL";
@@ -100,12 +167,20 @@ export function computeRiskState(args: {
       state: "CRITICAL",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Stop trading for today. Protect capital.",
+      hardStop,
+      blockReason,
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
+        dailyLossLimitPct: dailyLimitPct,
+
         currentDrawdownPct: dd,
+        maxDrawdownPct: maxDD,
+
         survivalScore,
         topDeviationSeverity: topDev,
+
+        lossStreak,
       },
     };
   }
@@ -131,12 +206,20 @@ export function computeRiskState(args: {
       state: "DANGER",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Cooldown 30 minutes. Reduce size on next trade.",
+      hardStop,
+      blockReason,
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
+        dailyLossLimitPct: dailyLimitPct,
+
         currentDrawdownPct: dd,
+        maxDrawdownPct: maxDD,
+
         survivalScore,
         topDeviationSeverity: topDev,
+
+        lossStreak,
       },
     };
   }
@@ -163,12 +246,20 @@ export function computeRiskState(args: {
       state: "WARNING",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Trade only A+ setups. Keep size small.",
+      hardStop,
+      blockReason,
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
+        dailyLossLimitPct: dailyLimitPct,
+
         currentDrawdownPct: dd,
+        maxDrawdownPct: maxDD,
+
         survivalScore,
         topDeviationSeverity: topDev,
+
+        lossStreak,
       },
     };
   }
@@ -178,12 +269,20 @@ export function computeRiskState(args: {
     state: "SAFE",
     reasons: ["Risk is within normal bounds."],
     recommendedAction: "Keep plan. Maintain discipline.",
+    hardStop,
+    blockReason,
     flags: {
       dailyLimitBreached: dailyBreached,
       dailyLossUsedRatio,
+      dailyLossLimitPct: dailyLimitPct,
+
       currentDrawdownPct: dd,
+      maxDrawdownPct: maxDD,
+
       survivalScore,
       topDeviationSeverity: topDev,
+
+      lossStreak,
     },
   };
 }

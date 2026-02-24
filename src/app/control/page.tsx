@@ -430,6 +430,29 @@ export default function ControlCenterPage() {
         </div>
       </div>
 
+      {os?.riskState?.hardStop ? (
+        <div
+          className="card"
+          style={{ padding: 16, border: "1px solid rgba(255,72,72,0.35)" }}
+        >
+          <div style={{ fontWeight: 1000, fontSize: 14 }}>
+            🚨 Capital Protection Mode: HARD STOP
+          </div>
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            Reason:{" "}
+            <b style={{ color: "var(--text)" }}>
+              {os.riskState.blockReason ?? "Risk hard-stop"}
+            </b>
+          </div>
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            Action:{" "}
+            <b style={{ color: "var(--text)" }}>
+              {os.riskState.recommendedAction}
+            </b>
+          </div>
+        </div>
+      ) : null}
+
       {!hasData ? (
         <div className="card" style={{ padding: 16 }}>
           <div style={{ fontWeight: 1000 }}>No events loaded</div>
