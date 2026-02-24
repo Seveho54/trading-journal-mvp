@@ -188,7 +188,7 @@ export function computeRiskState(args: {
   // ---------- DANGER ----------
   const isDanger =
     (dailyLossUsedRatio != null && dailyLossUsedRatio >= 0.7) ||
-    (dd != null && dd >= 0.18) ||
+    (dd != null && dd >= Math.max(0.18, g.ddWarningPct * 1.8)) ||
     (survivalScore != null && survivalScore < 55) ||
     topDev === "HIGH";
 
@@ -197,7 +197,7 @@ export function computeRiskState(args: {
       reasons.push(
         `Daily loss near limit (${Math.round(dailyLossUsedRatio * 100)}%).`,
       );
-    if (dd != null && dd >= 0.18)
+    if (dd != null && dd >= Math.max(0.18, g.ddWarningPct * 1.8))
       reasons.push(`Drawdown elevated (${Math.round(dd * 1000) / 10}%).`);
     if (survivalScore != null && survivalScore < 55)
       reasons.push(`Survival score low (${survivalScore}/100).`);
@@ -227,7 +227,7 @@ export function computeRiskState(args: {
   // ---------- WARNING ----------
   const isWarning =
     (dailyLossUsedRatio != null && dailyLossUsedRatio >= 0.4) ||
-    (dd != null && dd >= 0.1) ||
+    (dd != null && dd >= g.ddWarningPct) ||
     (survivalScore != null && survivalScore < 70) ||
     topDev === "MEDIUM";
 
@@ -236,7 +236,7 @@ export function computeRiskState(args: {
       reasons.push(
         `Daily loss building (${Math.round(dailyLossUsedRatio * 100)}%).`,
       );
-    if (dd != null && dd >= 0.1)
+    if (dd != null && dd >= g.ddWarningPct)
       reasons.push(`Drawdown > 10% (${Math.round(dd * 1000) / 10}%).`);
     if (survivalScore != null && survivalScore < 70)
       reasons.push(`Survival score below 70 (${survivalScore}/100).`);

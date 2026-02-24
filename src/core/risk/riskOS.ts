@@ -9,8 +9,13 @@ import { analyzeEquity } from "./engines/equityEngine";
 import { analyzeExposure } from "./engines/exposureEngine";
 import { analyzeDailyLoss } from "./engines/dailyLossEngine";
 import { computeRiskState } from "./engines/riskStateEngine";
+import type { Guardrails } from "./engines/guardrails";
 
-export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
+export function computeRiskOS(args: {
+  events: RiskEvent[];
+  nowTs?: number;
+  guardrails?: Partial<Guardrails>;
+}) {
   const nowTs = args.nowTs ?? Date.now();
   const events = [...args.events].sort((a, b) => a.ts - b.ts);
 
@@ -22,9 +27,10 @@ export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
   });
 
   const daily = analyzeDailyLoss({
-    events,
+    events: args.events,
     currentEquity: equity.currentEquity,
-    currentTs: nowTs,
+    currentTs: args.nowTs,
+    dailyLossLimitPct: args.guardrails?.dailyLossLimitPct,
   });
 
   const baselines = buildBehaviorBaselines({
@@ -56,6 +62,7 @@ export function computeRiskOS(args: { events: RiskEvent[]; nowTs?: number }) {
     daily,
     deviations: deviationPack.deviations,
     survival,
+    guardrails: args.guardrails,
   });
 
   return {

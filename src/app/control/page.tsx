@@ -182,6 +182,15 @@ export default function ControlCenterPage() {
 
   const [os, setOs] = useState<any>(null);
 
+  const [guardrails, setGuardrails] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return JSON.parse(localStorage.getItem("tv_guardrails") || "null");
+    } catch {
+      return null;
+    }
+  });
+
   useEffect(() => {
     if (!events.length && liveTs == null) return;
 
@@ -269,7 +278,7 @@ export default function ControlCenterPage() {
         const res = await fetch("/api/risk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ events: combinedEvents }),
+          body: JSON.stringify({ events: combinedEvents, guardrails }),
           signal: ac.signal,
         });
 
@@ -404,27 +413,9 @@ export default function ControlCenterPage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               className="btn-secondary"
-              onClick={() => router.push("/upload")}
+              onClick={() => router.push("/settings/risk")}
             >
-              Upload
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => router.push("/mentor")}
-            >
-              Mentor
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => router.push("/intel")}
-            >
-              Intel
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => router.push("/positions")}
-            >
-              Positions
+              Risk Settings
             </button>
           </div>
         </div>

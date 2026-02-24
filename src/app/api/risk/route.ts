@@ -28,7 +28,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const os = computeRiskOS({ events, nowTs: Date.now() });
+    const guardrails = body?.guardrails ?? null;
+    const os = computeRiskOS({ events, nowTs: Date.now(), guardrails });
 
     console.log("[/api/risk] baselines:", os.baselines?.length ?? 0);
     console.log(
