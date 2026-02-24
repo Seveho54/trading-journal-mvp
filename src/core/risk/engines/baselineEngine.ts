@@ -144,8 +144,8 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
   const TYPES = new Set([
     "TRADE_CLOSE",
     "POSITION_CLOSE",
-    "TRADE_CLOSED",
     "POSITION_CLOSED",
+    "TRADE_CLOSED",
   ]);
 
   const out: TradeSample[] = [];
@@ -162,14 +162,14 @@ function extractTradeSamples(events: RiskEvent[]): TradeSample[] {
     const data = (e as any).data ?? e;
 
     const realized =
-      safeNum((e as any).realizedPnl) ??
-      safeNum((data as any).realizedPnl) ??
-      safeNum((data as any).pnl) ??
-      0;
+      safeNum((data as any).realizedPnl) ?? safeNum((data as any).pnl) ?? null;
 
-    const fee = safeNum((e as any).fee) ?? safeNum((data as any).fee) ?? 0;
+    const fee = safeNum((data as any).fee) ?? 0;
 
-    const net = realized - fee;
+    const net =
+      safeNum((data as any).netProfit) ??
+      safeNum((data as any).net) ??
+      (realized != null ? realized - fee : null);
 
     if (!Number.isFinite(net)) continue;
 

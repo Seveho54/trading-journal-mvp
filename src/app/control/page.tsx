@@ -182,6 +182,8 @@ export default function ControlCenterPage() {
 
   const [os, setOs] = useState<any>(null);
 
+  const [showWhy, setShowWhy] = useState(false);
+
   const [guardrails, setGuardrails] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -190,6 +192,32 @@ export default function ControlCenterPage() {
       return null;
     }
   });
+
+  useEffect(() => {
+    function refresh() {
+      try {
+        setGuardrails(
+          JSON.parse(localStorage.getItem("tv_guardrails") || "null"),
+        );
+      } catch {
+        setGuardrails(null);
+      }
+    }
+
+    // 1) direkt beim Mount
+    refresh();
+
+    // 2) wenn user in anderem Tab speichert
+    window.addEventListener("storage", refresh);
+
+    // 3) wenn user zurückkommt (Settings -> Control)
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
 
   useEffect(() => {
     if (!events.length && liveTs == null) return;
@@ -343,7 +371,7 @@ export default function ControlCenterPage() {
     return () => {
       ac.abort();
     };
-  }, [events, liveTs]);
+  }, [events, liveTs, guardrails]);
 
   const topAlerts = useMemo(() => {
     if (!os) return [];
@@ -410,6 +438,17 @@ export default function ControlCenterPage() {
             <b style={{ color: "var(--text)" }}>{String((os as any)?.ok)}</b>
           </div>
 
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            Samples:{" "}
+            <b style={{ color: "var(--text)" }}>
+              {os?.deviations?.meta?.tradeSamplesUsed ?? "—"}
+            </b>{" "}
+            | Baseline trades:{" "}
+            <b style={{ color: "var(--text)" }}>
+              {os?.baselines?.[0]?.evidence?.tradesUsed ?? "—"}
+            </b>
+          </div>
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               className="btn-secondary"
@@ -421,25 +460,104 @@ export default function ControlCenterPage() {
         </div>
       </div>
 
-      {os?.riskState?.hardStop ? (
+      {os?.riskState?.state === "CRITICAL" ? (
         <div
           className="card"
           style={{ padding: 16, border: "1px solid rgba(255,72,72,0.35)" }}
         >
           <div style={{ fontWeight: 1000, fontSize: 14 }}>
-            🚨 Capital Protection Mode: HARD STOP
+            🚨 Capital Protection Mode: CRITICAL
           </div>
-          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-            Reason:{" "}
-            <b style={{ color: "var(--text)" }}>
-              {os.riskState.blockReason ?? "Risk hard-stop"}
-            </b>
-          </div>
+
           <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
             Action:{" "}
             <b style={{ color: "var(--text)" }}>
-              {os.riskState.recommendedAction}
+              {os?.riskState?.recommendedAction ?? "—"}
             </b>
+          </div>
+
+          <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
+            {(os?.riskState?.reasons ?? [])
+              .slice(0, 3)
+              .map((r: string, i: number) => (
+                <div key={i}>• {r}</div>
+              ))}
+
+            {showWhy && os?.riskState?.explain ? (
+              <div style={{ marginTop: 12, ...cardInner() }}>
+                <div
+                  className="p-muted"
+                  style={{ fontSize: 12, fontWeight: 900 }}
+                >
+                  TRIGGER
+                </div>
+
+                <div style={{ marginTop: 8, fontSize: 12 }}>
+                  {(os.riskState.explain.triggeredBy ?? []).length ? (
+                    (os.riskState.explain.triggeredBy as string[]).map(
+                      (t, i) => <div key={i}>• {t}</div>,
+                    )
+                  ) : (
+                    <div className="p-muted">No triggers (SAFE).</div>
+                  )}
+                </div>
+
+                <div
+                  className="p-muted"
+                  style={{ marginTop: 12, fontSize: 12, fontWeight: 900 }}
+                >
+                  METRICS
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: "grid",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span className="p-muted">Daily loss used</span>
+                    <b>
+                      {os.riskState.explain.metrics.dailyLossUsedPct != null
+                        ? `${os.riskState.explain.metrics.dailyLossUsedPct}%`
+                        : "—"}
+                    </b>
+                  </div>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span className="p-muted">Drawdown</span>
+                    <b>
+                      {os.riskState.explain.metrics.drawdownPct != null
+                        ? `${os.riskState.explain.metrics.drawdownPct}%`
+                        : "—"}
+                    </b>
+                  </div>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span className="p-muted">Survival score</span>
+                    <b>
+                      {os.riskState.explain.metrics.survivalScore != null
+                        ? `${os.riskState.explain.metrics.survivalScore}/100`
+                        : "—"}
+                    </b>
+                  </div>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between" }}
+                  >
+                    <span className="p-muted">Top deviation</span>
+                    <b>
+                      {os.riskState.explain.metrics.topDeviationSeverity ?? "—"}
+                    </b>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -589,6 +707,14 @@ export default function ControlCenterPage() {
                 </span>
               </div>
 
+              <button
+                className="btn-secondary"
+                style={{ padding: "6px 10px", fontSize: 12 }}
+                onClick={() => setShowWhy((v) => !v)}
+              >
+                {showWhy ? "Hide" : "Why?"}
+              </button>
+
               <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                 One action. Based on deterministic rules.
               </div>
@@ -725,7 +851,11 @@ export default function ControlCenterPage() {
                   style={{ display: "flex", justifyContent: "space-between" }}
                 >
                   <span className="p-muted">Daily loss limit</span>
-                  <b>3.0%</b>
+                  <b>
+                    {guardrails?.dailyLossLimitPct != null
+                      ? `${Math.round(Number(guardrails.dailyLossLimitPct) * 1000) / 10}%`
+                      : "—"}
+                  </b>
                 </div>
                 <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                   Used today:{" "}
@@ -742,7 +872,11 @@ export default function ControlCenterPage() {
                   style={{ display: "flex", justifyContent: "space-between" }}
                 >
                   <span className="p-muted">Max drawdown limit</span>
-                  <b>20.0%</b>
+                  <b>
+                    {guardrails?.ddHardStopPct != null
+                      ? `${Math.round(Number(guardrails.ddHardStopPct) * 1000) / 10}%`
+                      : "—"}
+                  </b>
                 </div>
                 <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
                   Current DD:{" "}
@@ -759,13 +893,14 @@ export default function ControlCenterPage() {
                   style={{ display: "flex", justifyContent: "space-between" }}
                 >
                   <span className="p-muted">Cooldown after loss streak</span>
-                  <b>30 min</b>
+                  <b>
+                    {guardrails?.lossStreakHardStop != null
+                      ? `Hard-stop at ${guardrails.lossStreakHardStop}`
+                      : "—"}
+                  </b>
                 </div>
                 <div className="p-muted" style={{ marginTop: 6, fontSize: 12 }}>
-                  Current streak:{" "}
-                  <b style={{ color: "var(--text)" }}>
-                    {os?.riskState?.flags?.lossStreak ?? "—"}
-                  </b>
+                  Current streak: <b style={{ color: "var(--text)" }}></b>
                 </div>
               </div>
             </div>

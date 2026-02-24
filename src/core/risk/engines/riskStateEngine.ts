@@ -12,22 +12,29 @@ export type RiskState = "SAFE" | "WARNING" | "DANGER" | "CRITICAL";
 
 export type RiskStateOutput = {
   state: RiskState;
-  reasons: string[]; // max 3
-  recommendedAction: string; // single clear action
-  hardStop: boolean;
-  blockReason: string | null;
+
+  // UI
+  headline: string; // 1 Satz
+  recommendedAction: string; // 1 klare Aktion
+  reasons: string[]; // max 3 (bullet points)
+
+  // Explain-Details (für Premium “Why?”)
+  explain: {
+    triggeredBy: Array<"DAILY_LIMIT" | "DRAWDOWN" | "SURVIVAL" | "BEHAVIOR">; // was hat ausgelöst
+    metrics: {
+      dailyLossUsedPct: number | null; // 0..100
+      drawdownPct: number | null; // 0..100
+      survivalScore: number | null; // 0..100
+      topDeviationSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+    };
+  };
+
   flags: {
     dailyLimitBreached: boolean;
     dailyLossUsedRatio: number | null; // 0..1
-    dailyLossLimitPct: number | null; // 0..1
-
     currentDrawdownPct: number | null; // 0..1
-    maxDrawdownPct: number | null; // 0..1
-
     survivalScore: number | null; // 0..100
     topDeviationSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
-
-    lossStreak: number | null;
   };
 };
 
@@ -101,6 +108,12 @@ export function computeRiskState(args: {
 
   const topDev = pickTopSeverity(args.deviations);
 
+  const triggeredBy: RiskStateOutput["explain"]["triggeredBy"] = [];
+
+  const ddPct = dd != null ? Math.round(dd * 1000) / 10 : null; // 17.5
+  const dailyUsedPct =
+    dailyLossUsedRatio != null ? Math.round(dailyLossUsedRatio * 100) : null;
+
   const lossStreak = (() => {
     const ls = args.deviations.find((d) => d.id === "LOSS_STREAK");
     if (!ls) return 0;
@@ -156,31 +169,32 @@ export function computeRiskState(args: {
     topDev === "CRITICAL";
 
   if (isCritical) {
-    if (dailyBreached) reasons.push("Daily loss limit breached.");
-    if (dd != null && dd >= 0.25)
-      reasons.push(`Drawdown high (${Math.round(dd * 1000) / 10}%).`);
+    if (dailyBreached) triggeredBy.push("DAILY_LIMIT");
+    if (dd != null && dd >= 0.25) triggeredBy.push("DRAWDOWN");
     if (survivalScore != null && survivalScore < 40)
-      reasons.push(`Survival score very low (${survivalScore}/100).`);
-    if (topDev === "CRITICAL")
-      reasons.push("Critical behavior deviation detected.");
+      triggeredBy.push("SURVIVAL");
+    if (topDev === "CRITICAL") triggeredBy.push("BEHAVIOR");
+
     return {
       state: "CRITICAL",
+      headline: "Capital protection triggered.",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Stop trading for today. Protect capital.",
-      hardStop,
-      blockReason,
+      explain: {
+        triggeredBy,
+        metrics: {
+          dailyLossUsedPct: dailyUsedPct,
+          drawdownPct: ddPct,
+          survivalScore,
+          topDeviationSeverity: topDev,
+        },
+      },
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
-        dailyLossLimitPct: dailyLimitPct,
-
         currentDrawdownPct: dd,
-        maxDrawdownPct: maxDD,
-
         survivalScore,
         topDeviationSeverity: topDev,
-
-        lossStreak,
       },
     };
   }
@@ -194,32 +208,31 @@ export function computeRiskState(args: {
 
   if (isDanger) {
     if (dailyLossUsedRatio != null && dailyLossUsedRatio >= 0.7)
-      reasons.push(
-        `Daily loss near limit (${Math.round(dailyLossUsedRatio * 100)}%).`,
-      );
-    if (dd != null && dd >= Math.max(0.18, g.ddWarningPct * 1.8))
-      reasons.push(`Drawdown elevated (${Math.round(dd * 1000) / 10}%).`);
+      triggeredBy.push("DAILY_LIMIT");
+    if (dd != null && dd >= 0.18) triggeredBy.push("DRAWDOWN");
     if (survivalScore != null && survivalScore < 55)
-      reasons.push(`Survival score low (${survivalScore}/100).`);
-    if (topDev === "HIGH") reasons.push("High behavior deviation detected.");
+      triggeredBy.push("SURVIVAL");
+    if (topDev === "HIGH") triggeredBy.push("BEHAVIOR");
     return {
       state: "DANGER",
+      headline: "Risk elevated — reduce activity.",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Cooldown 30 minutes. Reduce size on next trade.",
-      hardStop,
-      blockReason,
+      explain: {
+        triggeredBy,
+        metrics: {
+          dailyLossUsedPct: dailyUsedPct,
+          drawdownPct: ddPct,
+          survivalScore,
+          topDeviationSeverity: topDev,
+        },
+      },
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
-        dailyLossLimitPct: dailyLimitPct,
-
         currentDrawdownPct: dd,
-        maxDrawdownPct: maxDD,
-
         survivalScore,
         topDeviationSeverity: topDev,
-
-        lossStreak,
       },
     };
   }
@@ -236,30 +249,32 @@ export function computeRiskState(args: {
       reasons.push(
         `Daily loss building (${Math.round(dailyLossUsedRatio * 100)}%).`,
       );
-    if (dd != null && dd >= g.ddWarningPct)
-      reasons.push(`Drawdown > 10% (${Math.round(dd * 1000) / 10}%).`);
+    if (dailyLossUsedRatio != null && dailyLossUsedRatio >= 0.4)
+      triggeredBy.push("DAILY_LIMIT");
+    if (dd != null && dd >= 0.1) triggeredBy.push("DRAWDOWN");
     if (survivalScore != null && survivalScore < 70)
-      reasons.push(`Survival score below 70 (${survivalScore}/100).`);
-    if (topDev === "MEDIUM")
-      reasons.push("Medium behavior deviation detected.");
+      triggeredBy.push("SURVIVAL");
+    if (topDev === "MEDIUM") triggeredBy.push("BEHAVIOR");
     return {
       state: "WARNING",
+      headline: "Risk building — tighten discipline.",
       reasons: reasons.slice(0, 3),
       recommendedAction: "Trade only A+ setups. Keep size small.",
-      hardStop,
-      blockReason,
+      explain: {
+        triggeredBy,
+        metrics: {
+          dailyLossUsedPct: dailyUsedPct,
+          drawdownPct: ddPct,
+          survivalScore,
+          topDeviationSeverity: topDev,
+        },
+      },
       flags: {
         dailyLimitBreached: dailyBreached,
         dailyLossUsedRatio,
-        dailyLossLimitPct: dailyLimitPct,
-
         currentDrawdownPct: dd,
-        maxDrawdownPct: maxDD,
-
         survivalScore,
         topDeviationSeverity: topDev,
-
-        lossStreak,
       },
     };
   }
@@ -267,22 +282,24 @@ export function computeRiskState(args: {
   // ---------- SAFE ----------
   return {
     state: "SAFE",
+    headline: "Risk is within normal bounds.",
     reasons: ["Risk is within normal bounds."],
     recommendedAction: "Keep plan. Maintain discipline.",
-    hardStop,
-    blockReason,
+    explain: {
+      triggeredBy: [],
+      metrics: {
+        dailyLossUsedPct: dailyUsedPct,
+        drawdownPct: ddPct,
+        survivalScore,
+        topDeviationSeverity: topDev,
+      },
+    },
     flags: {
       dailyLimitBreached: dailyBreached,
       dailyLossUsedRatio,
-      dailyLossLimitPct: dailyLimitPct,
-
       currentDrawdownPct: dd,
-      maxDrawdownPct: maxDD,
-
       survivalScore,
       topDeviationSeverity: topDev,
-
-      lossStreak,
     },
   };
 }
